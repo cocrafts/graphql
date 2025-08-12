@@ -7,21 +7,26 @@ import type {
 } from 'aws-lambda';
 import type { CloseCode } from 'graphql-ws/common';
 import type {
-	ServerOptions,
+	ServerOptions as WsServerOptions,
 	Context as GraphQLWSContext,
 } from 'graphql-ws/server';
+import { type HandlerOptions as HttpHandlerOptions } from 'graphql-http';
 
-export type AdapterOptions = {
+export type CustomWsServerOptions = Omit<
+	WsServerOptions,
+	'connectionInitWaitTimeout'
+> & {
 	/**
-	 * Options of general GraphQL Websocket Server, defined in
-	 * [graphql-ws/server.ts](https://github.com/enisdenjo/graphql-ws/blob/master/src/server.ts)
+	 * Unsupported cause there's no way to schedule timeout to close connection on AWS Lambda
 	 */
-	server: Omit<ServerOptions, 'connectionInitWaitTimeout'> & {
-		/**
-		 * Unsupported cause there's no way to schedule timeout to close connection on AWS Lambda
-		 */
-		connectionInitWaitTimeout?: number;
-	};
+	connectionInitWaitTimeout?: number;
+};
+
+/**
+ * Options of general GraphQL Websocket Server, defined in
+ * [graphql-ws/server.ts](https://github.com/enisdenjo/graphql-ws/blob/master/src/server.ts)
+ */
+export type WsAdapterOptions = CustomWsServerOptions & {
 	/**
 	 * Distributed persistent storage. Used to store connection context.
 	 */
@@ -40,6 +45,8 @@ export type AdapterOptions = {
 	customRouteHandler?: APIGatewayProxyWebsocketHandlerV2;
 };
 
+export type HttpAdapterOptions = HttpHandlerOptions & {};
+
 export type Socket = {
 	context: () => Promise<Readonly<GraphQLWSContext>>;
 	updateContext: (
@@ -53,7 +60,7 @@ export type Socket = {
 };
 
 export type GraphQLAdapterContext = AWSLambdaContext & {
-	server: ServerOptions;
+	server: WsServerOptions;
 	storage: StorageEngine;
 	socket: Socket;
 };

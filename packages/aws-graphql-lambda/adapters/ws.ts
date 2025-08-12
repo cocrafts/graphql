@@ -10,14 +10,6 @@ import {
 	DeleteConnectionCommand,
 	PostToConnectionCommand,
 } from '@aws-sdk/client-apigatewaymanagementapi';
-import type {
-	AdapterOptions,
-	AWSGraphQLRouteHandler,
-	GraphQLAdapterContext,
-	Socket,
-	StorageEngine,
-} from '../interface';
-import { isAWSBaseEvent, storageKey } from '../utils';
 import {
 	CloseCode,
 	MessageType,
@@ -38,12 +30,21 @@ import {
 	execute as graphqlExecute,
 } from 'graphql';
 
-export function AWSGraphQLWSAdapter({
-	server,
+import type {
+	WsAdapterOptions,
+	AWSGraphQLRouteHandler,
+	GraphQLAdapterContext,
+	Socket,
+	StorageEngine,
+} from '../interface';
+import { isAWSBaseEvent, storageKey } from '../utils';
+
+export function AWSGraphQLWsAdapter({
 	storage,
 	gateway,
 	customRouteHandler,
-}: AdapterOptions): APIGatewayProxyWebsocketHandlerV2 {
+	...server
+}: WsAdapterOptions): APIGatewayProxyWebsocketHandlerV2 {
 	return (event, ctx, callback) => {
 		const connectionId = event.requestContext.connectionId;
 		const socket = createSocket(gateway, storage, connectionId);
@@ -338,6 +339,7 @@ const createSocket = (
 		updateContext: async data => {
 			if (!ctx) ctx = await queryContext();
 
+			// TODO: race condition of remote storage may happen
 			ctx = { ...ctx, ...data };
 			await storage.set(ctxKey, JSON.stringify(ctx));
 
