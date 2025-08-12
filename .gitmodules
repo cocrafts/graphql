@@ -1,0 +1,3 @@
+[submodule "vendor/graphql-ws"]
+	path = vendor/graphql-ws
+	url = https://github.com/enisdenjo/graphql-ws

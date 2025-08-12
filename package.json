@@ -1,0 +1,24 @@
+{
+	"name": "@cocraft/graphql",
+	"module": "index.ts",
+	"type": "module",
+	"workspaces": [
+		"packages/*"
+	],
+	"scripts": {
+		"format": "prettier . --write"
+	},
+	"devDependencies": {
+		"@aws-sdk/client-apigatewaymanagementapi": "^3.864.0",
+		"@types/aws-lambda": "^8.10.152",
+		"@types/bun": "latest",
+		"graphql": "^16.10.0",
+		"graphql-ws": "^6.0.6",
+		"prettier": "^3.6.2"
+	},
+	"peerDependencies": {
+		"typescript": "^5",
+		"graphql": "^16"
+	},
+	"packageManager": "bun"
+}
