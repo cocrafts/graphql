@@ -7,8 +7,20 @@ export const isAWSBaseEvent = (
 	return false;
 };
 
-export const storageKey = {
-	context: (connectionId: string) => {
-		return `AWSWebsocketGraphQL:${connectionId}:context`;
+export const key = {
+	connCtx: (connectionId: string) => {
+		return `AWSWebsocketGraphQL:connection:${connectionId}`;
 	},
+	subPayload: (subscriptionId: string) => {
+		return `AWSWebsocketGraphQL:subscription:${subscriptionId}`;
+	},
+};
+
+type RegistrableChannel = {
+	topics: string[];
+	register: (connectionId: string, subscriptionId: string) => Promise<void>;
+};
+
+export const isRegistrableChannel = (val: any): val is RegistrableChannel => {
+	return Array.isArray(val['topics']) && typeof val['register'] === 'function';
 };

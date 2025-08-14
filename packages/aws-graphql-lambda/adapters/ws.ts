@@ -26,71 +26,80 @@ import {
 	getOperationAST,
 	parse as graphqlParse,
 	validate as graphqlValidate,
-	subscribe as graphqlSubscribe,
 	execute as graphqlExecute,
 } from 'graphql';
 
 import type {
-	WsAdapterOptions,
+	WSAdapterOptions,
 	AWSGraphQLRouteHandler,
-	GraphQLAdapterContext,
+	GraphQLWsAdapterContext,
 	Socket,
-	StorageEngine,
+	Storage,
 } from '../interface';
-import { isAWSBaseEvent, storageKey } from '../utils';
+import { isAWSBaseEvent, isRegistrableChannel, key } from '../utils';
+import { emit } from 'node:process';
+import { AWSGatewayRedisGraphQLPubsub } from 'aws-graphql-redis-pubsub';
+import { customSubscribe } from './graphql';
 
 export function AWSGraphQLWsAdapter({
 	storage,
 	gateway,
+	pubsub,
 	customRouteHandler,
-	...server
-}: WsAdapterOptions): APIGatewayProxyWebsocketHandlerV2 {
-	return (event, ctx, callback) => {
+	...options
+}: WSAdapterOptions): APIGatewayProxyWebsocketHandlerV2 {
+	if (!(pubsub instanceof AWSGatewayRedisGraphQLPubsub)) {
+		throw Error(
+			'AWSGraphQLWsAdapter explicitly requires AWSGatewayRedisGraphQLPubsub',
+		);
+	}
+
+	return async (event, ctx) => {
 		const connectionId = event.requestContext.connectionId;
 		const socket = createSocket(gateway, storage, connectionId);
 
 		// A wrapped context for handler
-		const context: GraphQLAdapterContext = { ...ctx, server, storage, socket };
+		const context: GraphQLWsAdapterContext = {
+			...ctx,
+			storage,
+			socket,
+			pubsub,
+			options,
+		};
 
-		try {
-			switch (event.requestContext.routeKey) {
-				case '$connect': {
-					handleConnect(context, event);
+		let result;
+		switch (event.requestContext.eventType) {
+			case 'CONNECT': {
+				result = await handleConnect(context, event);
+				break;
+			}
+			case 'DISCONNECT': {
+				result = await handleDisconnect(context, event);
+				break;
+			}
+			case 'MESSAGE': {
+				if (event.requestContext.routeKey === '$default') {
+					result = await handleMessage(context, event);
 					break;
 				}
-				case '$disconnect': {
-					break;
-				}
-				case '$default': {
-					handleMessage(context, event);
-					break;
-				}
-				default: {
-					return customRouteHandler?.(event, ctx, callback);
+
+				if (customRouteHandler) {
+					result = await customRouteHandler?.(event, ctx);
 				}
 			}
-		} catch {}
+		}
 
-		return Promise.resolve({
-			statusCode: 500,
-			body: JSON.stringify({
-				error: 'Event Not Handled',
-				message: 'The event is not supported or handled by the server',
-			}),
-		});
+		if (result) return result;
+
+		return { statusCode: 200 };
 	};
 }
 
 /**
- * Handle the `$connect` event, establish connection or abort the handshake.
- *
- * Ref:
- * - https://docs.aws.amazon.com/apigateway/latest/developerguide/apigateway-websocket-api-route-keys-connect-disconnect.html
- * - https://docs.aws.amazon.com/apigateway/latest/developerguide/websocket-connect-route-subprotocol.html
+ * Handle the `CONNECT` event, establish connection or abort the handshake.
  */
 const handleConnect: AWSGraphQLRouteHandler = async ({ socket }, event) => {
 	if (isAWSBaseEvent(event)) {
-		// https://docs.aws.amazon.com/apigateway/latest/developerguide/set-up-lambda-proxy-integrations.html#apigateway-multivalue-headers-and-parameters
 		const subprotocols: string[] =
 			event.multiValueHeaders['Sec-WebSocket-Protocol'] ?? [];
 		const supportedProtocol = handleProtocols(subprotocols);
@@ -124,13 +133,50 @@ const handleConnect: AWSGraphQLRouteHandler = async ({ socket }, event) => {
 	}
 };
 
+/**
+ * Handle `DISCONNECT`, equivalent to `socket.closed` implemented in `vendor/graphql-ws/src/server.ts`
+ */
+const handleDisconnect: AWSGraphQLRouteHandler = async (
+	{ socket, storage, pubsub, options },
+	event,
+) => {
+	const unsafeContext = event.requestContext as any;
+	const code = unsafeContext['disconnectStatusCode'] ?? 1001;
+	const reason = unsafeContext['disconnectReason'] ?? 'Going away';
+
+	const connectionId = event.requestContext.connectionId;
+
+	const subscriptions = await pubsub.getConnectionSubscriptions(connectionId);
+
+	// Disconnect all subscriptions in pubsub
+	await pubsub.disconnect(connectionId);
+
+	const ctx = await socket.context();
+
+	const completePromises = [];
+	for (const subscriptionId of subscriptions) {
+		const payloadStr = await storage.get(key.subPayload(subscriptionId));
+		if (!payloadStr) return;
+
+		const payload = JSON.parse(payloadStr);
+
+		// Manually call onComplete callback when there's nothing left from subscriptions
+		completePromises.push(options.onComplete?.(ctx, subscriptionId, payload));
+	}
+
+	await Promise.all(completePromises);
+
+	if (ctx.acknowledged) await options.onDisconnect?.(ctx, code, reason);
+	await options.onClose?.(ctx, code, reason);
+};
+
 const handleMessage: AWSGraphQLRouteHandler = async (
-	{ server, socket },
+	{ socket, storage, pubsub, options },
 	event,
 ) => {
 	let message: Message;
 	try {
-		message = parseMessage(event.body, server.jsonMessageReviver);
+		message = parseMessage(event.body, options.jsonMessageReviver);
 	} catch (error) {
 		await socket.close(CloseCode.BadRequest, 'Invalid message received');
 		return;
@@ -140,13 +186,13 @@ const handleMessage: AWSGraphQLRouteHandler = async (
 		case MessageType.ConnectionInit: {
 			const ctx = await socket.context();
 			if (ctx.connectionInitReceived) {
-				return socket.close(
+				return await socket.close(
 					CloseCode.TooManyInitialisationRequests,
 					'Too many initialisation requests',
 				);
 			}
 
-			const permittedOrPayload = await server.onConnect?.(ctx);
+			const permittedOrPayload = await options.onConnect?.(ctx);
 			if (permittedOrPayload === false) {
 				return await socket.close(CloseCode.Forbidden, 'Forbidden');
 			}
@@ -160,14 +206,9 @@ const handleMessage: AWSGraphQLRouteHandler = async (
 			await socket.send(
 				stringifyMessage<MessageType.ConnectionAck>(
 					isObject(permittedOrPayload)
-						? {
-								type: MessageType.ConnectionAck,
-								payload: permittedOrPayload,
-							}
-						: {
-								type: MessageType.ConnectionAck,
-							},
-					server.jsonMessageReplacer,
+						? { type: MessageType.ConnectionAck, payload: permittedOrPayload }
+						: { type: MessageType.ConnectionAck },
+					options.jsonMessageReplacer,
 				),
 			);
 
@@ -179,7 +220,7 @@ const handleMessage: AWSGraphQLRouteHandler = async (
 					message.payload
 						? { type: MessageType.Pong, payload: message.payload }
 						: { type: MessageType.Pong },
-					server.jsonMessageReplacer,
+					options.jsonMessageReplacer,
 				),
 			);
 
@@ -192,31 +233,35 @@ const handleMessage: AWSGraphQLRouteHandler = async (
 		case MessageType.Subscribe: {
 			const ctx = await socket.context();
 			if (!ctx.acknowledged) {
-				return socket.close(CloseCode.Unauthorized, 'Unauthorized');
+				return await socket.close(CloseCode.Unauthorized, 'Unauthorized');
 			}
 
 			const { id, payload } = message;
-			if (id in ctx.subscriptions) {
-				return socket.close(
+
+			let isSubscribed = await pubsub.isRegistered(id);
+			if (isSubscribed) {
+				return await socket.close(
 					CloseCode.SubscriberAlreadyExists,
 					`Subscriber for ${id} already exists`,
 				);
 			}
 
-			const emit = createSubscriptionEmitter(server, socket);
+			// Store message payload to handle with `onComplete` from disconnect event
+			// or complete message from client in another runtimes
+			await storage.set(key.subPayload(id), JSON.stringify(payload));
+
+			const emit = createSubscriptionEmitter(options, socket);
 
 			try {
 				let execArgs: ExecutionArgs;
-				const maybeExecArgsOrErrors = await server.onSubscribe?.(
+				const maybeExecArgsOrErrors = await options.onSubscribe?.(
 					ctx,
 					message.id,
 					message.payload,
 				);
 				if (maybeExecArgsOrErrors) {
 					if (areGraphQLErrors(maybeExecArgsOrErrors)) {
-						return id in ctx.subscriptions
-							? await emit.error(maybeExecArgsOrErrors, message)
-							: void 0;
+						return await emit.error(maybeExecArgsOrErrors, message);
 					} else if (Array.isArray(maybeExecArgsOrErrors)) {
 						throw new Error(
 							'Invalid return value from onSubscribe hook, \
@@ -226,7 +271,7 @@ const handleMessage: AWSGraphQLRouteHandler = async (
 
 					execArgs = maybeExecArgsOrErrors;
 				} else {
-					if (!server.schema) {
+					if (!options.schema) {
 						throw new Error('The GraphQL schema is not provided');
 					}
 
@@ -236,20 +281,17 @@ const handleMessage: AWSGraphQLRouteHandler = async (
 						variableValues: payload.variables,
 					};
 
-					execArgs = {
-						...args,
-						schema:
-							typeof server.schema === 'function'
-								? await server.schema(ctx, id, payload, args)
-								: server.schema,
-					};
+					const schema =
+						typeof options.schema === 'function'
+							? await options.schema(ctx, id, payload, args)
+							: options.schema;
 
-					const validate = server.validate ?? graphqlValidate;
+					execArgs = { ...args, schema };
+
+					const validate = options.validate ?? graphqlValidate;
 					const validationErrors = validate(execArgs.schema, execArgs.document);
 					if (validationErrors.length > 0) {
-						return id in ctx.subscriptions
-							? await emit.error(validationErrors, message)
-							: void 0;
+						return emit.error(validationErrors, message);
 					}
 				}
 
@@ -258,70 +300,77 @@ const handleMessage: AWSGraphQLRouteHandler = async (
 					execArgs.operationName,
 				);
 				if (!operationAST) {
-					return id in ctx.subscriptions
-						? await emit.error(
-								[new GraphQLError('Unable to identify operation')],
-								message,
-							)
-						: void 0;
+					return await emit.error(
+						[new GraphQLError('Unable to identify operation')],
+						message,
+					);
 				}
 
 				// if `onSubscribe` didn't specify a rootValue, inject one
 				if (!('rootValue' in execArgs)) {
-					execArgs.rootValue = server.roots?.[operationAST.operation];
+					execArgs.rootValue = options.roots?.[operationAST.operation];
 				}
 
 				// if `onSubscribe` didn't specify a context, inject one
 				if (!('contextValue' in execArgs)) {
 					execArgs.contextValue =
-						typeof server.context === 'function'
-							? await server.context(ctx, id, payload, execArgs)
-							: server.context;
+						typeof options.context === 'function'
+							? await options.context(ctx, id, payload, execArgs)
+							: options.context;
 				}
 
-				// the execution arguments have been prepared
-				// perform the operation and act accordingly
 				let operationResult;
 				if (operationAST.operation === 'subscription') {
-					const subscribe = server.subscribe ?? graphqlSubscribe;
+					const subscribe = options.subscribe ?? customSubscribe;
 					operationResult = await subscribe(execArgs);
-				}
-				// operation === 'query' || 'mutation'
-				else {
-					const execute = server.execute ?? graphqlExecute;
+				} else {
+					const execute = options.execute ?? graphqlExecute;
 					operationResult = await execute(execArgs);
 				}
 
-				const maybeResult = await server.onOperation?.(
-					ctx,
-					id,
-					payload,
-					execArgs,
-					operationResult,
-				);
-				if (maybeResult) operationResult = maybeResult;
-
-				// This is gonna be handled differently than normal async iterator.
-				// As Lambda, serverless architecture does not hold the runtime to wait and
-				// emit subscription events.
-				// We need to tightly integrate with a dedicated pubsub engine.
-			} catch {
-			} finally {
+				if (isRegistrableChannel(operationResult)) {
+					// register the subscription via returned channel of the supported pubsub
+					await operationResult.register(event.requestContext.connectionId, id);
+					break;
+				} else {
+					// Single emitted result that can be errors in execution
+					await emit.next(operationResult as any, message, execArgs);
+					await emit.complete(id in ctx.subscriptions, message);
+				}
+			} catch (error) {
+				console.error('error handle data', error);
+				await socket.close(CloseCode.InternalServerError);
 			}
 
 			break;
 		}
 		case MessageType.Complete: {
+			const connectionId = event.requestContext.connectionId;
+			const subscriptionId = message.id;
+
+			// Unregister from pubsub to prevent receiving new data from topic
+			await pubsub.unregister(connectionId, subscriptionId);
+
+			const [ctx, payloadStr] = await Promise.all([
+				socket.context(),
+				storage.get(key.subPayload(subscriptionId)),
+			]);
+			if (!payloadStr) return;
+			const payload = JSON.parse(payloadStr);
+
+			await options.onComplete?.(ctx, subscriptionId, payload);
+
+			await socket.close(1001, 'Going away');
 		}
 	}
 };
 
 const createSocket = (
 	gateway: ApiGatewayManagementApiClient,
-	storage: StorageEngine,
+	storage: Storage,
 	connectionId: string,
 ): Socket => {
-	const ctxKey = storageKey.context(connectionId);
+	const ctxKey = key.connCtx(connectionId);
 	let ctx: GraphQLWSContext;
 
 	const queryContext = async () => {
@@ -339,7 +388,6 @@ const createSocket = (
 		updateContext: async data => {
 			if (!ctx) ctx = await queryContext();
 
-			// TODO: race condition of remote storage may happen
 			ctx = { ...ctx, ...data };
 			await storage.set(ctxKey, JSON.stringify(ctx));
 
@@ -351,7 +399,7 @@ const createSocket = (
 
 			return ctx;
 		},
-		close: async (code: CloseCode, reason: string) => {
+		close: async (code?: number, reason?: string) => {
 			try {
 				// Send a close event to client, to mimic the close action of a Websocket server
 				await gateway.send(
@@ -373,7 +421,7 @@ const createSocket = (
 				await gateway.send(
 					new PostToConnectionCommand({
 						ConnectionId: connectionId,
-						Data: JSON.stringify(data),
+						Data: typeof data === 'string' ? data : JSON.stringify(data),
 					}),
 				);
 			} catch {}
@@ -381,7 +429,7 @@ const createSocket = (
 	};
 };
 
-const createSubscriptionEmitter = (server: ServerOptions, socket: Socket) => {
+const createSubscriptionEmitter = (options: ServerOptions, socket: Socket) => {
 	const next = async (
 		result: ExecutionResult,
 		{ id, payload }: SubscribeMessage,
@@ -390,7 +438,7 @@ const createSubscriptionEmitter = (server: ServerOptions, socket: Socket) => {
 		const { errors, ...resultWithoutErrors } = result;
 
 		const ctx = await socket.context();
-		const maybeResult = await server.onNext?.(ctx, id, payload, args, result);
+		const maybeResult = await options.onNext?.(ctx, id, payload, args, result);
 
 		await socket.send(
 			stringifyMessage<MessageType.Next>(
@@ -403,7 +451,7 @@ const createSubscriptionEmitter = (server: ServerOptions, socket: Socket) => {
 						...(errors ? { errors: errors.map(e => e.toJSON()) } : {}),
 					},
 				},
-				server.jsonMessageReplacer,
+				options.jsonMessageReplacer,
 			),
 		);
 	};
@@ -413,7 +461,7 @@ const createSubscriptionEmitter = (server: ServerOptions, socket: Socket) => {
 		{ id, payload }: SubscribeMessage,
 	) => {
 		const ctx = await socket.context();
-		const maybeErrors = await server.onError?.(ctx, id, payload, errors);
+		const maybeErrors = await options.onError?.(ctx, id, payload, errors);
 
 		await socket.send(
 			stringifyMessage<MessageType.Error>(
@@ -422,23 +470,30 @@ const createSubscriptionEmitter = (server: ServerOptions, socket: Socket) => {
 					type: MessageType.Error,
 					payload: maybeErrors || errors.map(e => e.toJSON()),
 				},
-				server.jsonMessageReplacer,
+				options.jsonMessageReplacer,
 			),
 		);
 	};
 
+	/**
+	 * This complete function is supposed to be called if:
+	 * - the subscription execution return single object
+	 * - the async iterator of execution return done
+	 *
+	 * How about called when disconnect???
+	 */
 	const complete = async (
 		notifyClient: boolean,
 		{ id, payload }: SubscribeMessage,
 	) => {
 		const ctx = await socket.context();
-		await server.onComplete?.(ctx, id, payload);
+		await options.onComplete?.(ctx, id, payload);
 
 		if (notifyClient) {
 			await socket.send(
 				stringifyMessage<MessageType.Complete>(
 					{ id, type: MessageType.Complete },
-					server.jsonMessageReplacer,
+					options.jsonMessageReplacer,
 				),
 			);
 		}

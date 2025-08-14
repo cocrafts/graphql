@@ -5,11 +5,11 @@ import type {
 } from 'aws-lambda';
 import { createHandler, type Request } from 'graphql-http';
 
-import type { HttpAdapterOptions } from '../interface';
+import type { HTTPAdapterOptions } from '../interface';
 
 export function AWSGraphQLHttpAdapter({
 	...handlerOptions
-}: HttpAdapterOptions): APIGatewayProxyHandlerV2 {
+}: HTTPAdapterOptions): APIGatewayProxyHandlerV2 {
 	const handle = createHandler<APIGatewayProxyEventV2, Context>(handlerOptions);
 
 	return async (event, context) => {
