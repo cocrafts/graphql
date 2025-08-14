@@ -1,7 +1,8 @@
 {
 	"name": "aws-graphql-example",
 	"scripts": {
-		"dev": "bun run --watch src/server.ts"
+		"dev": "bun run --watch src/server.ts",
+		"deploy": "sst deploy --stage development"
 	},
 	"dependencies": {
 		"@graphql-tools/schema": "^10.0.25",
@@ -9,11 +10,13 @@
 		"chalk": "^5.5.0",
 		"finalhandler": "^2.1.0",
 		"graphql-http": "^1.22.4",
+		"graphql-subscriptions": "^3.0.0",
 		"graphql-ws": "^6.0.6",
 		"morgan": "^1.10.1",
 		"ws": "^8.18.3"
 	},
 	"devDependencies": {
+		"sst": "3.17.10",
 		"@types/finalhandler": "^1.2.4",
 		"@types/morgan": "^1.9.10"
 	}
