@@ -1,6 +1,8 @@
 .cursor
 .vscode
 
+.sst
+
 # dependencies (bun install)
 node_modules
 
