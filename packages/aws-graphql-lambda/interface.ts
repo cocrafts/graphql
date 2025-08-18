@@ -83,6 +83,6 @@ export type AWSGraphQLRouteHandler = <T = any>(
  * On Serverless runtime like AWS Lambda, we may want use Redis or any other databases.
  */
 export interface Storage {
-	set: (key: string, value: string) => Promise<void> | void;
-	get: (key: string) => Promise<any | null> | string | null;
+	set: (key: string, value: string) => Promise<void>;
+	get: (key: string) => Promise<any | null>;
 }

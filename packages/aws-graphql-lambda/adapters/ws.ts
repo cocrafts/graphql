@@ -37,7 +37,6 @@ import type {
 	Storage,
 } from '../interface';
 import { isAWSBaseEvent, isRegistrableChannel, key } from '../utils';
-import { emit } from 'node:process';
 import { AWSGatewayRedisGraphQLPubsub } from 'aws-graphql-redis-pubsub';
 import { customSubscribe } from './graphql';
 
@@ -67,29 +66,30 @@ export function AWSGraphQLWsAdapter({
 			options,
 		};
 
-		let result;
 		switch (event.requestContext.eventType) {
 			case 'CONNECT': {
-				result = await handleConnect(context, event);
+				const result = await handleConnect(context, event);
+				if (result) return result;
 				break;
 			}
 			case 'DISCONNECT': {
-				result = await handleDisconnect(context, event);
+				const result = await handleDisconnect(context, event);
+				if (result) return result;
 				break;
 			}
 			case 'MESSAGE': {
 				if (event.requestContext.routeKey === '$default') {
-					result = await handleMessage(context, event);
+					const result = await handleMessage(context, event);
+					if (result) return result;
 					break;
 				}
 
 				if (customRouteHandler) {
-					result = await customRouteHandler?.(event, ctx);
+					const result = await customRouteHandler?.(event, ctx);
+					if (result) return result;
 				}
 			}
 		}
-
-		if (result) return result;
 
 		return { statusCode: 200 };
 	};
@@ -146,28 +146,34 @@ const handleDisconnect: AWSGraphQLRouteHandler = async (
 
 	const connectionId = event.requestContext.connectionId;
 
+	// Get subscriptions before cleaning up by `pubsub.disconnect`
 	const subscriptions = await pubsub.getConnectionSubscriptions(connectionId);
 
 	// Disconnect all subscriptions in pubsub
 	await pubsub.disconnect(connectionId);
 
 	const ctx = await socket.context();
+	if (options.onComplete) {
+		const completePromises = [];
+		for (const subscriptionId of subscriptions) {
+			const rawPayload = await storage.get(key.subPayload(subscriptionId));
+			if (!rawPayload) {
+				throw Error('Subscription payload is missing to handle disconnect');
+			}
 
-	const completePromises = [];
-	for (const subscriptionId of subscriptions) {
-		const payloadStr = await storage.get(key.subPayload(subscriptionId));
-		if (!payloadStr) return;
+			const payload = JSON.parse(rawPayload);
 
-		const payload = JSON.parse(payloadStr);
+			completePromises.push(options.onComplete(ctx, subscriptionId, payload));
+		}
 
-		// Manually call onComplete callback when there's nothing left from subscriptions
-		completePromises.push(options.onComplete?.(ctx, subscriptionId, payload));
+		await Promise.all(completePromises);
 	}
 
-	await Promise.all(completePromises);
-
 	if (ctx.acknowledged) await options.onDisconnect?.(ctx, code, reason);
+
 	await options.onClose?.(ctx, code, reason);
+
+	return { statusCode: 200 };
 };
 
 const handleMessage: AWSGraphQLRouteHandler = async (
@@ -338,8 +344,8 @@ const handleMessage: AWSGraphQLRouteHandler = async (
 					await emit.complete(id in ctx.subscriptions, message);
 				}
 			} catch (error) {
-				console.error('error handle data', error);
 				await socket.close(CloseCode.InternalServerError);
+				throw error;
 			}
 
 			break;
@@ -351,12 +357,16 @@ const handleMessage: AWSGraphQLRouteHandler = async (
 			// Unregister from pubsub to prevent receiving new data from topic
 			await pubsub.unregister(connectionId, subscriptionId);
 
-			const [ctx, payloadStr] = await Promise.all([
+			const [ctx, rawPayload] = await Promise.all([
 				socket.context(),
 				storage.get(key.subPayload(subscriptionId)),
 			]);
-			if (!payloadStr) return;
-			const payload = JSON.parse(payloadStr);
+
+			if (!rawPayload) {
+				throw Error('Subscription payload is missing to handle complete');
+			}
+
+			const payload = JSON.parse(rawPayload);
 
 			await options.onComplete?.(ctx, subscriptionId, payload);
 
@@ -372,11 +382,26 @@ const createSocket = (
 ): Socket => {
 	const ctxKey = key.connCtx(connectionId);
 	let ctx: GraphQLWSContext;
+	let ctxPromise: Promise<GraphQLWSContext> | undefined;
+	let isCtxUpdating = false;
 
 	const queryContext = async () => {
-		const ctxStr = await storage.get(ctxKey);
-		if (!ctxStr) throw Error('AWS GraphQL Websocket Context is not available');
-		return JSON.parse(ctxStr);
+		if (!ctxPromise) {
+			ctxPromise = storage
+				.get(ctxKey)
+				.then(rawCtx => {
+					if (!rawCtx) {
+						throw Error('AWS GraphQL Websocket Context is not available');
+					}
+
+					return JSON.parse(rawCtx);
+				})
+				.finally(() => {
+					ctxPromise = undefined;
+				});
+		}
+
+		return ctxPromise;
 	};
 
 	return {
@@ -386,12 +411,22 @@ const createSocket = (
 			return ctx;
 		},
 		updateContext: async data => {
-			if (!ctx) ctx = await queryContext();
+			if (isCtxUpdating) {
+				// context update is internally called, shouldn't be in concurrent
+				throw Error('Can not update socket context concurrently');
+			}
 
-			ctx = { ...ctx, ...data };
-			await storage.set(ctxKey, JSON.stringify(ctx));
+			try {
+				isCtxUpdating = true;
+				if (!ctx) ctx = await queryContext();
 
-			return ctx;
+				ctx = { ...ctx, ...data };
+				await storage.set(ctxKey, JSON.stringify(ctx));
+
+				return ctx;
+			} finally {
+				isCtxUpdating = false;
+			}
 		},
 		createContext: async data => {
 			await storage.set(ctxKey, JSON.stringify(data));
@@ -400,31 +435,27 @@ const createSocket = (
 			return ctx;
 		},
 		close: async (code?: number, reason?: string) => {
-			try {
-				// Send a close event to client, to mimic the close action of a Websocket server
-				await gateway.send(
-					new PostToConnectionCommand({
-						ConnectionId: connectionId,
-						Data: JSON.stringify({ type: 'close', code, reason }),
-					}),
-				);
+			// Send a close event to client, to mimic the close action of a Websocket server
+			await gateway.send(
+				new PostToConnectionCommand({
+					ConnectionId: connectionId,
+					Data: JSON.stringify({ type: 'close', code, reason }),
+				}),
+			);
 
-				await gateway.send(
-					new DeleteConnectionCommand({
-						ConnectionId: connectionId,
-					}),
-				);
-			} catch {}
+			await gateway.send(
+				new DeleteConnectionCommand({
+					ConnectionId: connectionId,
+				}),
+			);
 		},
 		send: async data => {
-			try {
-				await gateway.send(
-					new PostToConnectionCommand({
-						ConnectionId: connectionId,
-						Data: typeof data === 'string' ? data : JSON.stringify(data),
-					}),
-				);
-			} catch {}
+			await gateway.send(
+				new PostToConnectionCommand({
+					ConnectionId: connectionId,
+					Data: typeof data === 'string' ? data : JSON.stringify(data),
+				}),
+			);
 		},
 	};
 };
