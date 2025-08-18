@@ -8,7 +8,7 @@ import type {
 import type {
 	ServerOptions as WSServerOptions,
 	Context as GraphQLWsContext,
-} from 'graphql-ws/server';
+} from 'graphql-ws';
 import { type HandlerOptions as HttpHandlerOptions } from 'graphql-http';
 import type { GraphQLLambdaPubsub } from './pubsub';
 

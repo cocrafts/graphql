@@ -1,9 +1,7 @@
-import {
-	PostToConnectionCommand,
-	type ApiGatewayManagementApiClient,
-} from '@aws-sdk/client-apigatewaymanagementapi';
+import { PostToConnectionCommand } from '@aws-sdk/client-apigatewaymanagementapi';
+import type { ApiGatewayManagementApiClient } from '@aws-sdk/client-apigatewaymanagementapi';
 import type { RedisClientType } from 'redis';
-import type { GraphQLPubSub } from 'graphql-pubsub';
+import type { GraphQLPubSub } from '@metacraft/graphql-pubsub';
 
 type RegistrableChannel = {
 	topics: string[];

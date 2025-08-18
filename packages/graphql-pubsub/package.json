@@ -1,9 +1,33 @@
 {
   "name": "@metacraft/graphql-pubsub",
   "version": "0.1.0",
-  "module": "index.ts",
   "type": "module",
+  "main": "dist/index.cjs.js",
+  "module": "dist/index.esm.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.esm.js",
+      "require": "./dist/index.cjs.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "rollup -c",
+    "dev": "rollup -c -w"
+  },
   "dependencies": {
     "graphql-subscriptions": "^3.0.0"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^27.0.0",
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@rollup/plugin-typescript": "^12.0.0",
+    "rollup": "^4.12.0",
+    "rollup-plugin-dts": "^6.1.0",
+    "typescript": "^5.0.0"
   }
 }
