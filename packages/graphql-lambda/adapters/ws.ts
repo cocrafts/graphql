@@ -30,7 +30,7 @@ import {
 } from 'graphql';
 
 import type {
-	WSAdapterOptions,
+	WsAdapterOptions,
 	AWSGraphQLRouteHandler,
 	GraphQLWsAdapterContext,
 	Socket,
@@ -42,19 +42,19 @@ import {
 	isRegistrableChannel,
 	key,
 } from '../utils';
-import { AWSGatewayRedisGraphQLPubsub } from 'aws-graphql-redis-pubsub';
+import { GraphQLLambdaPubsub } from '../pubsub';
 import { customSubscribe } from './graphql';
 
-export function AWSGraphQLWsAdapter({
+export function GraphQLLambdaWsAdapter({
 	storage,
 	gateway,
 	pubsub,
 	logger = createConsoleLogger(),
 	customRouteHandler,
 	...options
-}: WSAdapterOptions): APIGatewayProxyWebsocketHandlerV2 {
-	if (!(pubsub instanceof AWSGatewayRedisGraphQLPubsub)) {
-		throw Error('GraphQL Lambda requires GraphQLLambdaPubsub');
+}: WsAdapterOptions): APIGatewayProxyWebsocketHandlerV2 {
+	if (!(pubsub instanceof GraphQLLambdaPubsub)) {
+		throw Error('GraphQL Lambda adapter requires GraphQLLambdaPubsub');
 	}
 
 	return async (event, ctx) => {

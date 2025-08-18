@@ -1,0 +1,19 @@
+{
+	"name": "@metacraft/graphql-lambda",
+	"version": "0.1.0",
+	"main": "index.ts",
+	"devDependencies": {
+		"@aws-sdk/client-apigatewaymanagementapi": "^3.864.0",
+		"@types/aws-lambda": "^8.10.152",
+		"graphql": "^16.10.0",
+		"graphql-http": "^1.22.4",
+		"redis": "^5.8.0"
+	},
+	"peerDependencies": {
+		"@aws-sdk/client-apigatewaymanagementapi": "~3",
+		"@types/aws-lambda": "~8",
+		"graphql": "~16",
+		"graphql-http": "~1",
+		"redis": "~5"
+	}
+}

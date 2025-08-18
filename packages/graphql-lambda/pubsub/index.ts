@@ -27,7 +27,7 @@ type Options = {
 	keyPrefix?: string;
 };
 
-export class AWSGatewayRedisGraphQLPubsub implements GraphQLPubSub {
+export class GraphQLLambdaPubsub implements GraphQLPubSub {
 	private redis: AnyRedis;
 	private gateway: ApiGatewayManagementApiClient;
 	private options: Options;

@@ -1,14 +1,14 @@
 import { expect, test, afterEach, beforeAll } from 'bun:test';
-import { AWSGatewayRedisGraphQLPubsub } from './index';
+import { GraphQLLambdaPubsub } from './index';
 import { createClient } from 'redis';
 
 const redis = createClient({ url: 'redis://127.0.0.1:6379' });
 const TEST_PREFIX = 'test:pubsub';
-let pubsub: AWSGatewayRedisGraphQLPubsub;
+let pubsub: GraphQLLambdaPubsub;
 
 beforeAll(async () => {
 	await redis.connect();
-	pubsub = new AWSGatewayRedisGraphQLPubsub({} as never, redis, {
+	pubsub = new GraphQLLambdaPubsub({} as never, redis, {
 		keyPrefix: TEST_PREFIX,
 	});
 });
@@ -219,7 +219,7 @@ test('publish event of a topic to connection', async () => {
 		},
 	} as any;
 
-	const pubsubWithMock = new AWSGatewayRedisGraphQLPubsub(mockGateway, redis, {
+	const pubsubWithMock = new GraphQLLambdaPubsub(mockGateway, redis, {
 		keyPrefix: TEST_PREFIX,
 	});
 	await pubsubWithMock.publish(topic, { message: 'Hello World' });
@@ -250,11 +250,9 @@ test('publish event of a topic to subscriptions of a single connection', async (
 		},
 	};
 
-	const pubsubWithMock = new AWSGatewayRedisGraphQLPubsub(
-		mockGateway as any,
-		redis,
-		{ keyPrefix: TEST_PREFIX },
-	);
+	const pubsubWithMock = new GraphQLLambdaPubsub(mockGateway as any, redis, {
+		keyPrefix: TEST_PREFIX,
+	});
 	await pubsubWithMock.publish(topic, { message: 'Hello' });
 
 	expect(publishCount).toBe(2); // Should publish to both subscriptions
@@ -271,11 +269,9 @@ test('not publish event of unregistered subscription', async () => {
 		},
 	};
 
-	const pubsubWithMock = new AWSGatewayRedisGraphQLPubsub(
-		mockGateway as any,
-		redis,
-		{ keyPrefix: TEST_PREFIX },
-	);
+	const pubsubWithMock = new GraphQLLambdaPubsub(mockGateway as any, redis, {
+		keyPrefix: TEST_PREFIX,
+	});
 	await pubsubWithMock.publish(topic, { message: 'Hello' });
 
 	expect(publishCount).toBe(0); // Should not publish to unregistered topic
@@ -296,11 +292,9 @@ test('not publish event of unregistered connection', async () => {
 		},
 	};
 
-	const pubsubWithMock = new AWSGatewayRedisGraphQLPubsub(
-		mockGateway as any,
-		redis,
-		{ keyPrefix: TEST_PREFIX },
-	);
+	const pubsubWithMock = new GraphQLLambdaPubsub(mockGateway as any, redis, {
+		keyPrefix: TEST_PREFIX,
+	});
 	await pubsubWithMock.publish(topic, { message: 'Hello' });
 
 	expect(publishCount).toBe(0); // Should not publish to disconnected connection
@@ -324,11 +318,9 @@ test('handle publish GoneException gracefully', async () => {
 		},
 	};
 
-	const pubsubWithMock = new AWSGatewayRedisGraphQLPubsub(
-		mockGateway as any,
-		redis,
-		{ keyPrefix: TEST_PREFIX },
-	);
+	const pubsubWithMock = new GraphQLLambdaPubsub(mockGateway as any, redis, {
+		keyPrefix: TEST_PREFIX,
+	});
 
 	expect(async () => {
 		await pubsubWithMock.publish(topic, { message: 'Hello' });
@@ -353,11 +345,9 @@ test('handle publish any error gracefully', async () => {
 		},
 	};
 
-	const pubsubWithMock = new AWSGatewayRedisGraphQLPubsub(
-		mockGateway as any,
-		redis,
-		{ keyPrefix: TEST_PREFIX },
-	);
+	const pubsubWithMock = new GraphQLLambdaPubsub(mockGateway as any, redis, {
+		keyPrefix: TEST_PREFIX,
+	});
 
 	// Should not throw, should handle gracefully
 	expect(async () => {

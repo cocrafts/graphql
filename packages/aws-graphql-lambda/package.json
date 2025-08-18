@@ -1,8 +1,0 @@
-{
-	"name": "aws-graphql-lambda",
-	"version": "0.0.1",
-	"main": "index.ts",
-	"dependencies": {
-		"aws-graphql-redis-pubsub": "*"
-	}
-}

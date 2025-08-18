@@ -5,13 +5,13 @@ import type {
 } from 'aws-lambda';
 import { createHandler, type Request } from 'graphql-http';
 
-import type { HTTPAdapterOptions } from '../interface';
+import type { HttpAdapterOptions } from '../interface';
 import { createConsoleLogger } from '../utils';
 
-export function AWSGraphQLHttpAdapter({
+export function GraphQLLambdaHttpAdapter({
 	logger = createConsoleLogger(),
 	...handlerOptions
-}: HTTPAdapterOptions): APIGatewayProxyHandlerV2 {
+}: HttpAdapterOptions): APIGatewayProxyHandlerV2 {
 	const handle = createHandler<APIGatewayProxyEventV2, Context>(handlerOptions);
 
 	return async (event, context) => {

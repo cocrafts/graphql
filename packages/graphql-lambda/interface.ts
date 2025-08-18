@@ -7,12 +7,12 @@ import type {
 } from 'aws-lambda';
 import type {
 	ServerOptions as WSServerOptions,
-	Context as GraphQLWSContext,
+	Context as GraphQLWsContext,
 } from 'graphql-ws/server';
-import { type HandlerOptions as HTTPHandlerOptions } from 'graphql-http';
-import type { AWSGatewayRedisGraphQLPubsub } from 'aws-graphql-redis-pubsub';
+import { type HandlerOptions as HttpHandlerOptions } from 'graphql-http';
+import type { GraphQLLambdaPubsub } from './pubsub';
 
-export type CustomWSServerOptions = Omit<
+export type CustomWsServerOptions = Omit<
 	WSServerOptions,
 	'connectionInitWaitTimeout'
 > & {
@@ -26,7 +26,7 @@ export type CustomWSServerOptions = Omit<
  * Options of general GraphQL Websocket Server, defined in
  * [graphql-ws/server.ts](https://github.com/enisdenjo/graphql-ws/blob/master/src/server.ts)
  */
-export type WSAdapterOptions = CustomWSServerOptions & {
+export type WsAdapterOptions = CustomWsServerOptions & {
 	/**
 	 * Distributed persistent storage. Used to store connection context.
 	 */
@@ -42,7 +42,7 @@ export type WSAdapterOptions = CustomWSServerOptions & {
 	 *
 	 * Required to interact with AWS Websocket Gateway to handle connection.
 	 */
-	pubsub: AWSGatewayRedisGraphQLPubsub;
+	pubsub: GraphQLLambdaPubsub;
 	/**
 	 * A custom logger used inside the adapter. Use `console` by default
 	 */
@@ -58,7 +58,7 @@ export type WSAdapterOptions = CustomWSServerOptions & {
 	) => APIGatewayProxyResultV2<any>;
 };
 
-export type HTTPAdapterOptions = HTTPHandlerOptions & {
+export type HttpAdapterOptions = HttpHandlerOptions & {
 	/**
 	 * A custom logger used inside the adapter. Use `console` by default
 	 */
@@ -66,9 +66,9 @@ export type HTTPAdapterOptions = HTTPHandlerOptions & {
 };
 
 export type Socket = {
-	context: () => Promise<Readonly<GraphQLWSContext>>;
-	updateContext: (data: Partial<GraphQLWSContext>) => Promise<GraphQLWSContext>;
-	createContext: (data: GraphQLWSContext) => Promise<GraphQLWSContext>;
+	context: () => Promise<Readonly<GraphQLWsContext>>;
+	updateContext: (data: Partial<GraphQLWsContext>) => Promise<GraphQLWsContext>;
+	createContext: (data: GraphQLWsContext) => Promise<GraphQLWsContext>;
 	close: (code?: number, data?: string) => Promise<void>;
 	send: (data: string | unknown) => Promise<void>;
 };
@@ -76,7 +76,7 @@ export type Socket = {
 export type GraphQLWsAdapterContext = AWSLambdaContext & {
 	storage: Storage;
 	socket: Socket;
-	pubsub: AWSGatewayRedisGraphQLPubsub;
+	pubsub: GraphQLLambdaPubsub;
 	logger: Logger;
 	options: WSServerOptions;
 };
