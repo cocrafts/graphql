@@ -36,7 +36,12 @@ import type {
 	Socket,
 	Storage,
 } from '../interface';
-import { isAWSBaseEvent, isRegistrableChannel, key } from '../utils';
+import {
+	createConsoleLogger,
+	isAWSBaseEvent,
+	isRegistrableChannel,
+	key,
+} from '../utils';
 import { AWSGatewayRedisGraphQLPubsub } from 'aws-graphql-redis-pubsub';
 import { customSubscribe } from './graphql';
 
@@ -44,13 +49,12 @@ export function AWSGraphQLWsAdapter({
 	storage,
 	gateway,
 	pubsub,
+	logger = createConsoleLogger(),
 	customRouteHandler,
 	...options
 }: WSAdapterOptions): APIGatewayProxyWebsocketHandlerV2 {
 	if (!(pubsub instanceof AWSGatewayRedisGraphQLPubsub)) {
-		throw Error(
-			'AWSGraphQLWsAdapter explicitly requires AWSGatewayRedisGraphQLPubsub',
-		);
+		throw Error('GraphQL Lambda requires GraphQLLambdaPubsub');
 	}
 
 	return async (event, ctx) => {
@@ -63,6 +67,7 @@ export function AWSGraphQLWsAdapter({
 			storage,
 			socket,
 			pubsub,
+			logger,
 			options,
 		};
 
@@ -153,18 +158,17 @@ const handleDisconnect: AWSGraphQLRouteHandler = async (
 	await pubsub.disconnect(connectionId);
 
 	const ctx = await socket.context();
+
 	if (options.onComplete) {
-		const completePromises = [];
-		for (const subscriptionId of subscriptions) {
+		const completePromises = subscriptions.map(async subscriptionId => {
 			const rawPayload = await storage.get(key.subPayload(subscriptionId));
 			if (!rawPayload) {
 				throw Error('Subscription payload is missing to handle disconnect');
 			}
 
 			const payload = JSON.parse(rawPayload);
-
-			completePromises.push(options.onComplete(ctx, subscriptionId, payload));
-		}
+			await options.onComplete?.(ctx, subscriptionId, payload);
+		});
 
 		await Promise.all(completePromises);
 	}
@@ -369,8 +373,6 @@ const handleMessage: AWSGraphQLRouteHandler = async (
 			const payload = JSON.parse(rawPayload);
 
 			await options.onComplete?.(ctx, subscriptionId, payload);
-
-			await socket.close(1001, 'Going away');
 		}
 	}
 };

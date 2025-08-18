@@ -1,4 +1,5 @@
 import type { APIGatewayProxyEventBase } from 'aws-lambda';
+import type { Logger } from './interface';
 
 export const isAWSBaseEvent = (
 	event: any,
@@ -23,4 +24,13 @@ type RegistrableChannel = {
 
 export const isRegistrableChannel = (val: any): val is RegistrableChannel => {
 	return Array.isArray(val['topics']) && typeof val['register'] === 'function';
+};
+
+export const createConsoleLogger = (): Logger => {
+	return {
+		debug: console.debug,
+		info: console.log,
+		warn: console.warn,
+		error: console.error,
+	};
 };

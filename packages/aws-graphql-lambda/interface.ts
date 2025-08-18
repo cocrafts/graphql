@@ -44,6 +44,10 @@ export type WSAdapterOptions = CustomWSServerOptions & {
 	 */
 	pubsub: AWSGatewayRedisGraphQLPubsub;
 	/**
+	 * A custom logger used inside the adapter. Use `console` by default
+	 */
+	logger?: Logger;
+	/**
 	 * AWS Websocket Gateway Only
 	 *
 	 * Called to handle custom routes defined by `action` in the event payload.
@@ -54,7 +58,12 @@ export type WSAdapterOptions = CustomWSServerOptions & {
 	) => APIGatewayProxyResultV2<any>;
 };
 
-export type HTTPAdapterOptions = HTTPHandlerOptions & {};
+export type HTTPAdapterOptions = HTTPHandlerOptions & {
+	/**
+	 * A custom logger used inside the adapter. Use `console` by default
+	 */
+	logger?: Logger;
+};
 
 export type Socket = {
 	context: () => Promise<Readonly<GraphQLWSContext>>;
@@ -68,6 +77,7 @@ export type GraphQLWsAdapterContext = AWSLambdaContext & {
 	storage: Storage;
 	socket: Socket;
 	pubsub: AWSGatewayRedisGraphQLPubsub;
+	logger: Logger;
 	options: WSServerOptions;
 };
 
@@ -85,4 +95,11 @@ export type AWSGraphQLRouteHandler = <T = any>(
 export interface Storage {
 	set: (key: string, value: string) => Promise<void>;
 	get: (key: string) => Promise<any | null>;
+}
+
+export interface Logger {
+	debug: (...msg: unknown[]) => void;
+	info: (...msg: unknown[]) => void;
+	warn: (...msg: unknown[]) => void;
+	error: (...msg: unknown[]) => void;
 }

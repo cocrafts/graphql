@@ -6,8 +6,10 @@ import type {
 import { createHandler, type Request } from 'graphql-http';
 
 import type { HTTPAdapterOptions } from '../interface';
+import { createConsoleLogger } from '../utils';
 
 export function AWSGraphQLHttpAdapter({
+	logger = createConsoleLogger(),
 	...handlerOptions
 }: HTTPAdapterOptions): APIGatewayProxyHandlerV2 {
 	const handle = createHandler<APIGatewayProxyEventV2, Context>(handlerOptions);
@@ -22,7 +24,7 @@ export function AWSGraphQLHttpAdapter({
 				body: body ?? undefined,
 			};
 		} catch (error) {
-			console.error('Internal error occurred during request handling.', error);
+			logger.error('Internal error occurred during request handling.', error);
 			return { statusCode: 500 };
 		}
 	};
