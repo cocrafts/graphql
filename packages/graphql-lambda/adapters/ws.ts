@@ -1,25 +1,24 @@
-import type { APIGatewayProxyWebsocketHandlerV2 } from 'aws-lambda';
-import {
-	handleProtocols,
-	type ServerOptions,
-	type Context as GraphQLWSContext,
-	areGraphQLErrors,
-} from 'graphql-ws/server';
 import {
 	ApiGatewayManagementApiClient,
 	DeleteConnectionCommand,
 	PostToConnectionCommand,
 } from '@aws-sdk/client-apigatewaymanagementapi';
+import type { APIGatewayProxyWebsocketHandlerV2 } from 'aws-lambda';
 import {
 	CloseCode,
 	MessageType,
 	parseMessage,
 	stringifyMessage,
-	type ExecutionResult,
-	type Message,
-	type SubscribeMessage,
-} from 'graphql-ws/common';
-import { isObject } from 'graphql-ws/utils';
+	handleProtocols,
+	areGraphQLErrors,
+} from 'graphql-ws';
+import type {
+	ServerOptions,
+	Context as GraphQLWSContext,
+	ExecutionResult,
+	Message,
+	SubscribeMessage,
+} from 'graphql-ws';
 import type { ExecutionArgs } from 'graphql';
 import {
 	GraphQLError,
@@ -215,7 +214,7 @@ const handleMessage: AWSGraphQLRouteHandler = async (
 
 			await socket.send(
 				stringifyMessage<MessageType.ConnectionAck>(
-					isObject(permittedOrPayload)
+					typeof permittedOrPayload === 'object'
 						? { type: MessageType.ConnectionAck, payload: permittedOrPayload }
 						: { type: MessageType.ConnectionAck },
 					options.jsonMessageReplacer,

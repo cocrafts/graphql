@@ -7,12 +7,14 @@
 		"@types/aws-lambda": "^8.10.152",
 		"graphql": "^16.10.0",
 		"graphql-http": "^1.22.4",
+		"graphql-ws": "^6.0.6",
 		"redis": "^5.8.0"
 	},
 	"peerDependencies": {
 		"@aws-sdk/client-apigatewaymanagementapi": "~3",
 		"@types/aws-lambda": "~8",
 		"graphql": "~16",
+		"graphql-ws": "~6",
 		"graphql-http": "~1",
 		"redis": "~5"
 	}
