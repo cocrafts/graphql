@@ -102,7 +102,6 @@ export class GraphQLLambdaPubsub implements GraphQLPubSub {
 		const channel = {
 			topics,
 			register: async (connectionId: string, subscriptionId: string) => {
-				console.log('register here', connectionId, subscriptionId);
 				const connectionKey = this.key('conn', connectionId);
 				const subscriptionKey = this.key('sub', subscriptionId);
 				const topicKeys = topics.map(topic => this.key('topic', topic));
@@ -123,17 +122,10 @@ export class GraphQLLambdaPubsub implements GraphQLPubSub {
 
 	async publish(topic: string, payload: any) {
 		const channels = await this.getChannels(topic);
-		console.log('channels', channels);
 
 		// NOTE: consider batching for high fan-out PostToConnection
 		const results = await Promise.allSettled(
 			channels.map(({ connectionId, subscriptionId }) => {
-				console.log(
-					'Send to',
-					connectionId,
-					subscriptionId,
-					this.prepareAndStringifyPayload(subscriptionId, payload),
-				);
 				return this.gateway.send(
 					new PostToConnectionCommand({
 						ConnectionId: connectionId,
