@@ -2,24 +2,15 @@
 
 A GraphQL Server setup for cross runtimes, supporting both dedicated servers and serverless environments. Compliant with the [`graphql-ws` protocol](https://github.com/enisdenjo/graphql-ws/blob/master/PROTOCOL.md).
 
-This project provides a unified GraphQL backend architecture that can run on dedicated servers, local development environments, and AWS Lambda infrastructure with API Gateway and WebSocket Gateway support.
+## Overview
 
-## Architecture Overview
-
-The project consists of three main packages that work together to provide a seamless GraphQL experience across different runtime environments:
-
-### Core Components
-
-- **GraphQL Schema**: Single schema definition shared across all environments
-- **Query/Mutation/Subscription Resolvers**: Unified resolver logic
-- **WebSocket Support**: GraphQL subscriptions via WebSocket protocol
-- **Pub/Sub Engine**: Abstract interface for event distribution
+This project provides a unified GraphQL backend architecture that can run on dedicated servers, local development environments, and AWS Lambda infrastructure. The same GraphQL schema and resolvers work across all environments.
 
 ## Packages
 
 ### @cocrafts/graphql-lambda
 
-AWS Lambda adapters for GraphQL with support for HTTP and WebSocket APIs, Redis storage, and distributed pub/sub.
+AWS Lambda adapters for GraphQL with HTTP and WebSocket support.
 
 **Features:**
 - HTTP and WebSocket adapters for AWS Lambda
@@ -45,17 +36,16 @@ export const wsHandler = AWSGraphQLWsAdapter({
 
 ### @cocrafts/graphql-pubsub
 
-Abstract pub/sub interface for GraphQL subscriptions with a default implementation using `graphql-subscriptions`.
+Abstract pub/sub interface for GraphQL subscriptions.
 
 **Features:**
 - Abstract `GraphQLPubSub` interface
 - Default implementation with `graphql-subscriptions`
 - Extensible for custom pub/sub backends
-- Lightweight and focused
 
 **Usage:**
 ```typescript
-import { DefaultGraphQLPubSub, GraphQLPubSub } from '@cocrafts/graphql-pubsub';
+import { DefaultGraphQLPubSub } from '@cocrafts/graphql-pubsub';
 
 const pubsub = new DefaultGraphQLPubSub();
 const channel = pubsub.subscribe('user.created');
@@ -66,96 +56,60 @@ await pubsub.publish('user.created', { id: '123', name: 'John' });
 
 Complete working example demonstrating the full stack integration.
 
-**Features:**
-- Local development server with HTTP and WebSocket
-- AWS Lambda deployment with SST
-- Redis integration for distributed pub/sub
-- Shared GraphQL schema across environments
-
 ## Runtime Environments
 
-### Monolith Server
+### Local Development / Monolith Server
 
-**Components:**
-- Single dedicated server
-- On-runtime WebSocket server
-- GraphQL subscriptions with local pub/sub
 - Standard `graphql-http` and `graphql-ws` libraries
+- Local pub/sub engine
+- Direct WebSocket connections
 
-**Use Case:** Traditional server deployments, local development
+### AWS Lambda Serverless
 
-### Serverless on AWS Lambda
+- WebSocket Gateway via API Gateway
+- Redis-based distributed storage and pub/sub
+- Lambda functions for resolvers
+- Context persistence between invocations
 
-**Components:**
-- WebSocket Gateway: AWS API Gateway WebSocket API
-- Pub/Sub: Redis-based distributed storage and event distribution
-- Main resolvers: AWS Lambda functions
-- HTTP API: AWS API Gateway HTTP API
-
-**Use Case:** Scalable, event-driven serverless architectures
-
-## Getting Started
-
-### Installation
+## Installation
 
 ```bash
-# Install all packages
 npm install @cocrafts/graphql-lambda @cocrafts/graphql-pubsub
-
-# Or install individually
-npm install @cocrafts/graphql-lambda
-npm install @cocrafts/graphql-pubsub
-```
-
-### Basic Setup
-
-1. **Define your GraphQL schema and resolvers**
-2. **Choose your pub/sub implementation**
-3. **Select your runtime environment**
-4. **Deploy and run**
-
-### Example Implementation
-
-See the `@cocrafts/graphql-example` package for a complete working implementation that demonstrates:
-- Local development server
-- AWS Lambda deployment
-- Redis integration
-- Shared schema across environments
-
-## Development
-
-### Building Packages
-
-```bash
-# Build graphql-lambda
-cd packages/graphql-lambda
-bun run build
-
-# Build graphql-pubsub
-cd packages/graphql-pubsub
-bun run build
-```
-
-### Running Examples
-
-```bash
-# Run local development server
-cd packages/graphql-example
-bun run dev
-
-# Deploy to AWS
-cd packages/graphql-example
-bun run deploy
 ```
 
 ## Key Benefits
 
 - **Unified Codebase**: Single GraphQL schema works everywhere
 - **Environment Agnostic**: Same code runs locally and in production
-- **Scalable Architecture**: Serverless-ready with Redis pub/sub
+- **Serverless Ready**: Lambda adapters with Redis pub/sub
 - **Protocol Compliant**: Full `graphql-ws` protocol support
-- **Type Safe**: Complete TypeScript support across all packages
+- **Type Safe**: Complete TypeScript support
 
-## Contributing
+## Development
 
-This project uses a monorepo structure with shared tooling and configurations. Each package can be developed and built independently while maintaining consistency across the ecosystem.
+```bash
+# Build packages
+cd packages/graphql-lambda && bun run build
+cd packages/graphql-pubsub && bun run build
+
+# Run example
+cd packages/graphql-example && bun run dev
+```
+
+## Critical Considerations
+
+### Serverless Limitations
+
+- **Context must be JSON serializable** - No functions, classes, or circular references
+- **No async iterators** - Uses custom pub/sub engine instead
+- **No field-level filtering** - Topic-based subscription routing only
+- **Context reconstruction** - Context rebuilt from Redis on each Lambda invocation
+
+### Best Practices
+
+- Design subscriptions for direct payload forwarding
+- Use topic-based filtering instead of field-level filtering
+- Keep context data minimal and serializable
+- Implement proper error handling and cleanup
+
+For detailed serverless considerations, see the [@cocrafts/graphql-lambda README](./packages/graphql-lambda/README.md).

@@ -15,6 +15,72 @@ npm install @cocrafts/graphql-lambda
 - **Redis Integration**: Distributed storage and pub/sub for serverless environments
 - **Cross-Environment**: Same GraphQL schema runs locally and on AWS Lambda
 
+## Serverless Considerations
+
+### Context Serialization Requirements
+
+**Context must be JSON serializable**: All context data is persisted to Redis between Lambda invocations using flattened dot-notation (e.g., `extra.user.id`). Functions, classes, and circular references are not supported.
+
+```typescript
+// Supported: Plain JSON data
+ctx.extra.user = { id: '123', name: 'John', roles: ['admin'] };
+
+// Not supported: Functions, circular references
+ctx.extra.callback = () => console.log('hello');
+ctx.extra.user.parent = ctx.extra.user;
+```
+
+### Subscription Execution Model
+
+**No async iterators**: Unlike server implementations, serverless uses a custom pubsub engine. Each subscription resolver runs once during setup, not for each published event. Published events are sent directly to clients without re-running GraphQL execution or validation.
+
+```typescript
+// Server: Re-executes GraphQL for each event
+for await (const event of asyncIterator) {
+  yield await execute({ schema, document, rootValue: event });
+}
+
+// Serverless: Direct event forwarding
+await pubsub.publish('topic', payload); // No re-execution
+```
+
+### Key Limitations
+
+- **No field-level filtering**: Server implementations can filter/transform fields per event; serverless sends raw published payloads
+- **No real-time validation**: Schema changes don't affect in-flight subscriptions until reconnection
+- **No per-event context**: Published events don't have access to subscription-time context or variables
+- **Context reconstruction**: Context is rebuilt from Redis on each Lambda invocation
+
+### Best Practices
+
+#### Context Management
+```typescript
+onConnect: async (ctx) => {
+  ctx.extra = {
+    userId: await authenticateUser(ctx.connectionParams?.token),
+    subscriptionCount: 0
+  };
+  return true;
+}
+```
+
+#### Subscription Design
+```typescript
+// Design for direct payload forwarding
+subscribe: () => pubsub.subscribe('CHAT_MESSAGE')
+
+// Publish complete, typed payloads
+await pubsub.publish('CHAT_MESSAGE', {
+  messageAdded: { id: '123', text: 'Hello', timestamp: new Date().toISOString() }
+});
+```
+
+### When to Use
+
+**Good for**: Event-driven applications, infrequent real-time updates, variable traffic patterns, cost optimization.
+
+**Consider alternatives for**: High-frequency updates, complex field filtering, low-latency requirements, heavy context usage.
+
 ## Usage
 
 ### Local Development
@@ -24,87 +90,8 @@ import { createHandler } from 'graphql-http/lib/use/http';
 import { useServer } from 'graphql-ws/use/ws';
 import { DefaultGraphQLPubSub } from '@cocrafts/graphql-pubsub';
 
-// Use standard graphql-http and graphql-ws with your schema
 const graphqlHandler = createHandler(graphqlHttpOptions);
 useServer(graphqlWsOptions, wss);
-```
-
-### Shared Schema and Options
-
-The same GraphQL schema and server options can be shared across all environments:
-
-```typescript
-// graphql.ts - Shared across local and Lambda
-import { makeExecutableSchema } from '@graphql-tools/schema';
-import { type HandlerOptions as GraphQLHTTPOptions } from 'graphql-http';
-import { type ServerOptions as GraphQLWSOptions } from 'graphql-ws';
-
-const typeDefs = /* GraphQL */ `
-  type Query {
-    greeting: String
-  }
-
-  type Mutation {
-    sendMessage(chat: String, message: String!): String
-  }
-
-  type Subscription {
-    messaged(chat: String): String!
-  }
-`;
-
-const resolvers = {
-  Query: {
-    greeting: () => 'Hello world!',
-  },
-  Mutation: {
-    sendMessage: async (obj, args, ctx, info) => {
-      const chat = args.chat ?? 'broadcast';
-      await pubsub.publish(`messaged_${chat}`, { messaged: args.message });
-      return `sent_${args.message}_${chat}`;
-    },
-  },
-  Subscription: {
-    messaged: {
-      subscribe: (obj, args, ctx, info) => {
-        const chat = args.chat ?? 'broadcast';
-        return pubsub.subscribe(`messaged_${chat}`);
-      },
-    },
-  },
-};
-
-export const schema = makeExecutableSchema({ typeDefs, resolvers });
-
-export const graphqlHttpOptions: GraphQLHTTPOptions = { schema };
-
-export const graphqlWsOptions: GraphQLWSOptions = {
-  schema,
-  onComplete(ctx, id, payload) {
-    console.log(`Subscription ${id} completed with payload:`, payload);
-  },
-  onDisconnect(ctx, code, reason) {
-    console.log(`Client disconnected with code ${code}: ${reason}`);
-  },
-  onConnect(ctx) {
-    console.log('New client connected');
-    return true; // Allow connection
-  },
-  onSubscribe(ctx, message, args) {
-    console.log(`New subscription: ${message.id}`);
-    return args; // Return execution arguments
-  },
-};
-```
-
-### AWS Lambda HTTP
-
-```typescript
-import { AWSGraphQLHttpAdapter } from '@cocrafts/graphql-lambda';
-import { AWSGatewayRedisGraphQLPubsub } from 'aws-graphql-redis-pubsub';
-
-const pubsub = new AWSGatewayRedisGraphQLPubsub(gateway, redis);
-export const handler = AWSGraphQLHttpAdapter(graphqlHttpOptions);
 ```
 
 ### AWS Lambda WebSocket
@@ -136,17 +123,6 @@ export const storage = {
   get: async (key: string) => await redis.get(key),
 };
 ```
-
-## Architecture
-
-The library provides adapters that bridge standard GraphQL HTTP/WebSocket configurations with AWS Lambda runtime:
-
-- **Shared Schema**: Single GraphQL schema definition used across all environments
-- **Shared Options**: Server configuration options (onComplete, onDisconnect, etc.) shared between local and Lambda
-- **HTTP Adapter**: Converts GraphQL HTTP requests to Lambda responses
-- **WebSocket Adapter**: Manages WebSocket connections through API Gateway
-- **Storage Interface**: Abstract storage layer for connection state and subscriptions
-- **Pub/Sub Integration**: Distributed event system using Redis and API Gateway
 
 ## Build
 
