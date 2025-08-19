@@ -11,6 +11,7 @@ import type {
 } from 'graphql-ws';
 import { type HandlerOptions as HttpHandlerOptions } from 'graphql-http';
 import type { GraphQLLambdaPubsub } from './pubsub';
+import type { RedisClientType } from 'redis';
 
 export type CustomWsServerOptions = Omit<
 	WSServerOptions,
@@ -28,9 +29,10 @@ export type CustomWsServerOptions = Omit<
  */
 export type WsAdapterOptions = CustomWsServerOptions & {
 	/**
-	 * Distributed persistent storage. Used to store connection context.
+	 * Distributed persistent storage by Redis. Used to store connection context.
+	 * Consider creating Storage interface for it.
 	 */
-	storage: Storage;
+	redis: RedisClientType;
 	/**
 	 * AWS Websocket Gateway Only
 	 *
@@ -66,16 +68,16 @@ export type HttpAdapterOptions = HttpHandlerOptions & {
 };
 
 export type Socket = {
-	context: () => Promise<Readonly<GraphQLWsContext>>;
-	updateContext: (data: Partial<GraphQLWsContext>) => Promise<GraphQLWsContext>;
+	context: () => Promise<GraphQLWsContext>;
 	createContext: (data: GraphQLWsContext) => Promise<GraphQLWsContext>;
 	close: (code?: number, data?: string) => Promise<void>;
 	send: (data: string | unknown) => Promise<void>;
+	flushChanges: () => Promise<void>;
 };
 
 export type GraphQLWsAdapterContext = AWSLambdaContext & {
-	storage: Storage;
 	socket: Socket;
+	redis: RedisClientType;
 	pubsub: GraphQLLambdaPubsub;
 	logger: Logger;
 	options: WSServerOptions;

@@ -1,5 +1,5 @@
 import type { APIGatewayProxyEventBase } from 'aws-lambda';
-import type { Logger } from './interface';
+import type { Logger } from '../interface';
 
 export const isAWSBaseEvent = (
 	event: any,

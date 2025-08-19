@@ -1,8 +1,3 @@
-import {
-	ApiGatewayManagementApiClient,
-	DeleteConnectionCommand,
-	PostToConnectionCommand,
-} from '@aws-sdk/client-apigatewaymanagementapi';
 import type { APIGatewayProxyWebsocketHandlerV2 } from 'aws-lambda';
 import {
 	CloseCode,
@@ -12,13 +7,7 @@ import {
 	handleProtocols,
 	areGraphQLErrors,
 } from 'graphql-ws';
-import type {
-	ServerOptions,
-	Context as GraphQLWSContext,
-	ExecutionResult,
-	Message,
-	SubscribeMessage,
-} from 'graphql-ws';
+import type { Context as GraphQLWSContext, Message } from 'graphql-ws';
 import type { ExecutionArgs } from 'graphql';
 import {
 	GraphQLError,
@@ -32,20 +21,20 @@ import type {
 	WsAdapterOptions,
 	AWSGraphQLRouteHandler,
 	GraphQLWsAdapterContext,
-	Socket,
-	Storage,
 } from '../interface';
 import {
-	createConsoleLogger,
+	key,
 	isAWSBaseEvent,
 	isRegistrableChannel,
-	key,
+	createSocket,
+	createConsoleLogger,
+	createSubscriptionEmitter,
 } from '../utils';
 import { GraphQLLambdaPubsub } from '../pubsub';
 import { customSubscribe } from './graphql';
 
 export function GraphQLLambdaWsAdapter({
-	storage,
+	redis,
 	gateway,
 	pubsub,
 	logger = createConsoleLogger(),
@@ -58,13 +47,14 @@ export function GraphQLLambdaWsAdapter({
 
 	return async (event, ctx) => {
 		const connectionId = event.requestContext.connectionId;
-		const socket = createSocket(gateway, storage, connectionId);
+
+		const socket = createSocket(gateway, redis, connectionId);
 
 		// A wrapped context for handler
 		const context: GraphQLWsAdapterContext = {
 			...ctx,
-			storage,
 			socket,
+			redis,
 			pubsub,
 			logger,
 			options,
@@ -94,6 +84,9 @@ export function GraphQLLambdaWsAdapter({
 				}
 			}
 		}
+
+		// Wait for any pending change before freezing this lambda instance
+		await socket.flushChanges();
 
 		return { statusCode: 200 };
 	};
@@ -141,7 +134,7 @@ const handleConnect: AWSGraphQLRouteHandler = async ({ socket }, event) => {
  * Handle `DISCONNECT`, equivalent to `socket.closed` implemented in `vendor/graphql-ws/src/server.ts`
  */
 const handleDisconnect: AWSGraphQLRouteHandler = async (
-	{ socket, storage, pubsub, options },
+	{ socket, redis, pubsub, options },
 	event,
 ) => {
 	const unsafeContext = event.requestContext as any;
@@ -160,7 +153,7 @@ const handleDisconnect: AWSGraphQLRouteHandler = async (
 
 	if (options.onComplete) {
 		const completePromises = subscriptions.map(async subscriptionId => {
-			const rawPayload = await storage.get(key.subPayload(subscriptionId));
+			const rawPayload = await redis.get(key.subPayload(subscriptionId));
 			if (!rawPayload) {
 				throw Error('Subscription payload is missing to handle disconnect');
 			}
@@ -180,7 +173,7 @@ const handleDisconnect: AWSGraphQLRouteHandler = async (
 };
 
 const handleMessage: AWSGraphQLRouteHandler = async (
-	{ socket, storage, pubsub, options },
+	{ socket, redis, pubsub, options },
 	event,
 ) => {
 	let message: Message;
@@ -206,11 +199,12 @@ const handleMessage: AWSGraphQLRouteHandler = async (
 				return await socket.close(CloseCode.Forbidden, 'Forbidden');
 			}
 
-			await socket.updateContext({
-				acknowledged: true,
-				connectionInitReceived: true,
-				connectionParams: message.payload,
-			});
+			// @ts-expect-error I can write
+			ctx.acknowledged = true;
+			// @ts-expect-error I can write
+			ctx.connectionInitReceived = true;
+			// @ts-expect-error I can write
+			ctx.connectionParams = message.payload;
 
 			await socket.send(
 				stringifyMessage<MessageType.ConnectionAck>(
@@ -257,7 +251,7 @@ const handleMessage: AWSGraphQLRouteHandler = async (
 
 			// Store message payload to handle with `onComplete` from disconnect event
 			// or complete message from client in another runtimes
-			await storage.set(key.subPayload(id), JSON.stringify(payload));
+			await redis.set(key.subPayload(id), JSON.stringify(payload));
 
 			const emit = createSubscriptionEmitter(options, socket);
 
@@ -347,7 +341,7 @@ const handleMessage: AWSGraphQLRouteHandler = async (
 					await emit.complete(id in ctx.subscriptions, message);
 				}
 			} catch (error) {
-				await socket.close(CloseCode.InternalServerError);
+				await socket.close(CloseCode.BadRequest);
 				throw error;
 			}
 
@@ -362,7 +356,7 @@ const handleMessage: AWSGraphQLRouteHandler = async (
 
 			const [ctx, rawPayload] = await Promise.all([
 				socket.context(),
-				storage.get(key.subPayload(subscriptionId)),
+				redis.get(key.subPayload(subscriptionId)),
 			]);
 
 			if (!rawPayload) {
@@ -374,162 +368,4 @@ const handleMessage: AWSGraphQLRouteHandler = async (
 			await options.onComplete?.(ctx, subscriptionId, payload);
 		}
 	}
-};
-
-const createSocket = (
-	gateway: ApiGatewayManagementApiClient,
-	storage: Storage,
-	connectionId: string,
-): Socket => {
-	const ctxKey = key.connCtx(connectionId);
-	let ctx: GraphQLWSContext;
-	let ctxPromise: Promise<GraphQLWSContext> | undefined;
-	let isCtxUpdating = false;
-
-	const queryContext = async () => {
-		if (!ctxPromise) {
-			ctxPromise = storage
-				.get(ctxKey)
-				.then(rawCtx => {
-					if (!rawCtx) {
-						throw Error('AWS GraphQL Websocket Context is not available');
-					}
-
-					return JSON.parse(rawCtx);
-				})
-				.finally(() => {
-					ctxPromise = undefined;
-				});
-		}
-
-		return ctxPromise;
-	};
-
-	return {
-		context: async () => {
-			if (!ctx) ctx = await queryContext();
-
-			return ctx;
-		},
-		updateContext: async data => {
-			if (isCtxUpdating) {
-				// context update is internally called, shouldn't be in concurrent
-				throw Error('Can not update socket context concurrently');
-			}
-
-			try {
-				isCtxUpdating = true;
-				if (!ctx) ctx = await queryContext();
-
-				ctx = { ...ctx, ...data };
-				await storage.set(ctxKey, JSON.stringify(ctx));
-
-				return ctx;
-			} finally {
-				isCtxUpdating = false;
-			}
-		},
-		createContext: async data => {
-			await storage.set(ctxKey, JSON.stringify(data));
-			ctx = data;
-
-			return ctx;
-		},
-		close: async (code?: number, reason?: string) => {
-			// Send a close event to client, to mimic the close action of a Websocket server
-			await gateway.send(
-				new PostToConnectionCommand({
-					ConnectionId: connectionId,
-					Data: JSON.stringify({ type: 'close', code, reason }),
-				}),
-			);
-
-			await gateway.send(
-				new DeleteConnectionCommand({
-					ConnectionId: connectionId,
-				}),
-			);
-		},
-		send: async data => {
-			await gateway.send(
-				new PostToConnectionCommand({
-					ConnectionId: connectionId,
-					Data: typeof data === 'string' ? data : JSON.stringify(data),
-				}),
-			);
-		},
-	};
-};
-
-const createSubscriptionEmitter = (options: ServerOptions, socket: Socket) => {
-	const next = async (
-		result: ExecutionResult,
-		{ id, payload }: SubscribeMessage,
-		args: ExecutionArgs,
-	) => {
-		const { errors, ...resultWithoutErrors } = result;
-
-		const ctx = await socket.context();
-		const maybeResult = await options.onNext?.(ctx, id, payload, args, result);
-
-		await socket.send(
-			stringifyMessage<MessageType.Next>(
-				{
-					id,
-					type: MessageType.Next,
-					payload: maybeResult || {
-						...resultWithoutErrors,
-						// omit errors completely if not defined
-						...(errors ? { errors: errors.map(e => e.toJSON()) } : {}),
-					},
-				},
-				options.jsonMessageReplacer,
-			),
-		);
-	};
-
-	const error = async (
-		errors: readonly GraphQLError[],
-		{ id, payload }: SubscribeMessage,
-	) => {
-		const ctx = await socket.context();
-		const maybeErrors = await options.onError?.(ctx, id, payload, errors);
-
-		await socket.send(
-			stringifyMessage<MessageType.Error>(
-				{
-					id,
-					type: MessageType.Error,
-					payload: maybeErrors || errors.map(e => e.toJSON()),
-				},
-				options.jsonMessageReplacer,
-			),
-		);
-	};
-
-	/**
-	 * This complete function is supposed to be called if:
-	 * - the subscription execution return single object
-	 * - the async iterator of execution return done
-	 *
-	 * How about called when disconnect???
-	 */
-	const complete = async (
-		notifyClient: boolean,
-		{ id, payload }: SubscribeMessage,
-	) => {
-		const ctx = await socket.context();
-		await options.onComplete?.(ctx, id, payload);
-
-		if (notifyClient) {
-			await socket.send(
-				stringifyMessage<MessageType.Complete>(
-					{ id, type: MessageType.Complete },
-					options.jsonMessageReplacer,
-				),
-			);
-		}
-	};
-
-	return { next, error, complete };
 };
