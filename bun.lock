@@ -30,6 +30,7 @@
         "graphql-subscriptions": "^3.0.0",
         "graphql-ws": "^6.0.6",
         "morgan": "^1.10.1",
+        "redis": "^5.8.0",
         "ws": "^8.18.3",
       },
       "devDependencies": {
@@ -40,7 +41,7 @@
     },
     "packages/graphql-lambda": {
       "name": "@cocrafts/graphql-lambda",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "devDependencies": {
         "@aws-sdk/client-apigatewaymanagementapi": "^3.864.0",
         "@rollup/plugin-commonjs": "^27.0.0",
