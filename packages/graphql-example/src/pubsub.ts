@@ -1,4 +1,4 @@
-import type { GraphQLPubSub } from 'graphql-pubsub';
+import type { GraphQLPubSub } from '@cocrafts/graphql-pubsub';
 
 export let pubsub: GraphQLPubSub;
 
