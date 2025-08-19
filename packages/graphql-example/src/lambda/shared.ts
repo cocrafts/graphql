@@ -1,5 +1,5 @@
 import { ApiGatewayManagementApiClient } from '@aws-sdk/client-apigatewaymanagementapi';
-import type { Storage } from 'aws-graphql-lambda';
+import type { Storage } from '@cocrafts/graphql-lambda';
 import { createClient } from 'redis';
 import chalk from 'chalk';
 import { Resource } from 'sst';
