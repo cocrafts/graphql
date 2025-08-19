@@ -1,5 +1,5 @@
 {
-	"name": "@metacraft/graphql-example",
+	"name": "@cocrafts/graphql-example",
 	"scripts": {
 		"dev": "bun run --watch src/server.ts",
 		"deploy": "sst deploy --stage development"

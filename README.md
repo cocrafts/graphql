@@ -1,4 +1,4 @@
-# @metacraft/graphql
+# @cocrafts/graphql
 
 A GraphQL Server setup for cross runtimes, supporting both dedicated servers and serverless environments. Compliant with the [`graphql-ws` protocol](https://github.com/enisdenjo/graphql-ws/blob/master/PROTOCOL.md).
 
@@ -17,7 +17,7 @@ The project consists of three main packages that work together to provide a seam
 
 ## Packages
 
-### @metacraft/graphql-lambda
+### @cocrafts/graphql-lambda
 
 AWS Lambda adapters for GraphQL with support for HTTP and WebSocket APIs, Redis storage, and distributed pub/sub.
 
@@ -29,7 +29,7 @@ AWS Lambda adapters for GraphQL with support for HTTP and WebSocket APIs, Redis 
 
 **Usage:**
 ```typescript
-import { AWSGraphQLHttpAdapter, AWSGraphQLWsAdapter } from '@metacraft/graphql-lambda';
+import { AWSGraphQLHttpAdapter, AWSGraphQLWsAdapter } from '@cocrafts/graphql-lambda';
 
 // HTTP Lambda
 export const httpHandler = AWSGraphQLHttpAdapter(graphqlHttpOptions);
@@ -43,7 +43,7 @@ export const wsHandler = AWSGraphQLWsAdapter({
 });
 ```
 
-### @metacraft/graphql-pubsub
+### @cocrafts/graphql-pubsub
 
 Abstract pub/sub interface for GraphQL subscriptions with a default implementation using `graphql-subscriptions`.
 
@@ -55,14 +55,14 @@ Abstract pub/sub interface for GraphQL subscriptions with a default implementati
 
 **Usage:**
 ```typescript
-import { DefaultGraphQLPubSub, GraphQLPubSub } from '@metacraft/graphql-pubsub';
+import { DefaultGraphQLPubSub, GraphQLPubSub } from '@cocrafts/graphql-pubsub';
 
 const pubsub = new DefaultGraphQLPubSub();
 const channel = pubsub.subscribe('user.created');
 await pubsub.publish('user.created', { id: '123', name: 'John' });
 ```
 
-### @metacraft/graphql-example
+### @cocrafts/graphql-example
 
 Complete working example demonstrating the full stack integration.
 
@@ -100,11 +100,11 @@ Complete working example demonstrating the full stack integration.
 
 ```bash
 # Install all packages
-npm install @metacraft/graphql-lambda @metacraft/graphql-pubsub
+npm install @cocrafts/graphql-lambda @cocrafts/graphql-pubsub
 
 # Or install individually
-npm install @metacraft/graphql-lambda
-npm install @metacraft/graphql-pubsub
+npm install @cocrafts/graphql-lambda
+npm install @cocrafts/graphql-pubsub
 ```
 
 ### Basic Setup
@@ -116,7 +116,7 @@ npm install @metacraft/graphql-pubsub
 
 ### Example Implementation
 
-See the `@metacraft/graphql-example` package for a complete working implementation that demonstrates:
+See the `@cocrafts/graphql-example` package for a complete working implementation that demonstrates:
 - Local development server
 - AWS Lambda deployment
 - Redis integration

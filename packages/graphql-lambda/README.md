@@ -1,11 +1,11 @@
-# @metacraft/graphql-lambda
+# @cocrafts/graphql-lambda
 
 GraphQL Lambda adapters for AWS Lambda functions with support for HTTP and WebSocket APIs, Redis storage, and distributed pub/sub.
 
 ## Installation
 
 ```bash
-npm install @metacraft/graphql-lambda
+npm install @cocrafts/graphql-lambda
 ```
 
 ## Features
@@ -22,7 +22,7 @@ npm install @metacraft/graphql-lambda
 ```typescript
 import { createHandler } from 'graphql-http/lib/use/http';
 import { useServer } from 'graphql-ws/use/ws';
-import { DefaultGraphQLPubSub } from '@metacraft/graphql-pubsub';
+import { DefaultGraphQLPubSub } from '@cocrafts/graphql-pubsub';
 
 // Use standard graphql-http and graphql-ws with your schema
 const graphqlHandler = createHandler(graphqlHttpOptions);
@@ -100,7 +100,7 @@ export const graphqlWsOptions: GraphQLWSOptions = {
 ### AWS Lambda HTTP
 
 ```typescript
-import { AWSGraphQLHttpAdapter } from '@metacraft/graphql-lambda';
+import { AWSGraphQLHttpAdapter } from '@cocrafts/graphql-lambda';
 import { AWSGatewayRedisGraphQLPubsub } from 'aws-graphql-redis-pubsub';
 
 const pubsub = new AWSGatewayRedisGraphQLPubsub(gateway, redis);
@@ -110,7 +110,7 @@ export const handler = AWSGraphQLHttpAdapter(graphqlHttpOptions);
 ### AWS Lambda WebSocket
 
 ```typescript
-import { AWSGraphQLWsAdapter } from '@metacraft/graphql-lambda';
+import { AWSGraphQLWsAdapter } from '@cocrafts/graphql-lambda';
 
 const mergedOptions = { 
   ...graphqlWsOptions, 
