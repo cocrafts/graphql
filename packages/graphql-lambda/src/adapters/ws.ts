@@ -194,6 +194,11 @@ const handleMessage: AWSGraphQLRouteHandler = async (
 				);
 			}
 
+			// @ts-expect-error I can write
+			ctx.connectionParams = message.payload;
+			// @ts-expect-error I can write
+			ctx.connectionInitReceived = true;
+
 			const permittedOrPayload = await options.onConnect?.(ctx);
 			if (permittedOrPayload === false) {
 				return await socket.close(CloseCode.Forbidden, 'Forbidden');
@@ -201,10 +206,6 @@ const handleMessage: AWSGraphQLRouteHandler = async (
 
 			// @ts-expect-error I can write
 			ctx.acknowledged = true;
-			// @ts-expect-error I can write
-			ctx.connectionInitReceived = true;
-			// @ts-expect-error I can write
-			ctx.connectionParams = message.payload;
 
 			await socket.send(
 				stringifyMessage<MessageType.ConnectionAck>(
@@ -235,6 +236,7 @@ const handleMessage: AWSGraphQLRouteHandler = async (
 		}
 		case MessageType.Subscribe: {
 			const ctx = await socket.context();
+			console.log('Subscribe context', JSON.stringify(ctx));
 			if (!ctx.acknowledged) {
 				return await socket.close(CloseCode.Unauthorized, 'Unauthorized');
 			}
