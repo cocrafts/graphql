@@ -34,12 +34,12 @@ export const createContextManager = <T extends object>(
 				if (currentBatchMut === mut) {
 					acc[acc.length - 1]?.pairs.push([path, value]);
 				} else {
-					acc.push({ mut, pairs: [path, value] });
+					acc.push({ mut, pairs: [[path, value]] });
 				}
 
 				return acc;
 			},
-			[] as { mut: 'set' | 'del'; pairs: [string, any] }[],
+			[] as { mut: 'set' | 'del'; pairs: [string, any][] }[],
 		);
 
 		for (const batch of batches) {
@@ -76,7 +76,7 @@ export const createContextManager = <T extends object>(
 
 	const scheduleUpdate = () => {
 		if (!isUpdateScheduled) {
-			isUpdateScheduled = false;
+			isUpdateScheduled = true;
 			queueMicrotask(flushChanges);
 		}
 	};

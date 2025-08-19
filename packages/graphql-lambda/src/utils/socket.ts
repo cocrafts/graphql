@@ -42,7 +42,7 @@ export const createSocket = (
 	return {
 		context: async () => {
 			if (!contextManager) {
-				if (contextPromise) {
+				if (!contextPromise) {
 					contextPromise = retrieveAndBuildContext();
 				}
 
