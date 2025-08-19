@@ -4,11 +4,11 @@ import {
 } from '@cocrafts/graphql-lambda';
 
 import { graphqlWsOptions } from '../graphql';
-import { gateway, redis, storage } from './shared';
+import { gateway, redis } from './shared';
 import { setPubsub } from '../pubsub';
 
 const pubsub = setPubsub(new GraphQLLambdaPubsub(gateway, redis));
 
-const mergedOptions = { ...graphqlWsOptions, storage, gateway, pubsub };
+const mergedOptions = { ...graphqlWsOptions, gateway, redis, pubsub };
 
 export const handler = GraphQLLambdaWsAdapter(mergedOptions);

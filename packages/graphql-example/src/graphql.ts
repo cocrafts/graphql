@@ -157,17 +157,24 @@ export const graphqlWsOptions: GraphQLWSOptions = {
 	schema,
 
 	context: ctx => {
-		return {
+		const context = {
 			userId: (ctx.extra as any)?.['userId'],
 			isAdmin: (ctx.extra as any)?.['isAdmin'],
 		};
+		console.log(chalk.green(`🧠 Context prepared: ${JSON.stringify(context)}`));
+
+		return context;
 	},
 
 	/**
 	 * Initialize connection context (serialized to Redis in serverless)
 	 */
 	onConnect(ctx) {
-		console.log(chalk.green(`🔗 Client connected`));
+		console.log(
+			chalk.green(
+				`🔗 Client connected ${JSON.stringify({ ...ctx, extra: null })}`,
+			),
+		);
 
 		if (!ctx.extra) ctx.extra = {};
 		const extraCtx = ctx.extra as ExtendedContext;
