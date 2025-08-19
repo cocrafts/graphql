@@ -32,7 +32,7 @@ export type WsAdapterOptions = CustomWsServerOptions & {
 	 * Distributed persistent storage by Redis. Used to store connection context.
 	 * Consider creating Storage interface for it.
 	 */
-	redis: RedisClientType;
+	redis: AnyRedis;
 	/**
 	 * AWS Websocket Gateway Only
 	 *
@@ -77,7 +77,7 @@ export type Socket = {
 
 export type GraphQLWsAdapterContext = AWSLambdaContext & {
 	socket: Socket;
-	redis: RedisClientType;
+	redis: AnyRedis;
 	pubsub: GraphQLLambdaPubsub;
 	logger: Logger;
 	options: WSServerOptions;
@@ -105,3 +105,5 @@ export interface Logger {
 	warn: (...msg: unknown[]) => void;
 	error: (...msg: unknown[]) => void;
 }
+
+export type AnyRedis = RedisClientType<any, any, any, any>;

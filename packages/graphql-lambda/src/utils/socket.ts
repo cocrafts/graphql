@@ -3,17 +3,16 @@ import {
 	PostToConnectionCommand,
 	type ApiGatewayManagementApiClient,
 } from '@aws-sdk/client-apigatewaymanagementapi';
-import type { RedisClientType } from 'redis';
 import type { Context as GraphQLWSContext } from 'graphql-ws';
 
-import type { Socket } from '../interface';
-import { key } from '../utils';
+import type { AnyRedis, Socket } from '../interface';
+import { key } from './common';
 
-import { buildContext, createContextManager } from './context';
+import { buildContext, compressContext, createContextManager } from './context';
 
 export const createSocket = (
 	gateway: ApiGatewayManagementApiClient,
-	redis: RedisClientType,
+	redis: AnyRedis,
 	connectionId: string,
 ): Socket => {
 	const contextKey = key.connCtx(connectionId);
@@ -53,6 +52,9 @@ export const createSocket = (
 		},
 		createContext: async data => {
 			contextManager = createContextManager(data, contextKey, redis);
+
+			const compressedContext = compressContext(contextManager.context);
+			redis.HSET(contextKey, compressedContext);
 
 			return contextManager.context;
 		},

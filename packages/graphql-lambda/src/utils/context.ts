@@ -1,6 +1,6 @@
-import type { RedisClientType } from 'redis';
 import { deepProxy, type ProxyMut, type ProxyPath } from './proxy';
 import type { Context as GraphQLWSContext } from 'graphql-ws';
+import type { AnyRedis } from '../interface';
 
 /**
  * Each connection has a context for subsequence subscriptions and handler callbacks (onConnect, onComplete, onDisconnect)
@@ -19,7 +19,7 @@ import type { Context as GraphQLWSContext } from 'graphql-ws';
 export const createContextManager = <T extends object>(
 	initial: T,
 	contextKey: string,
-	redis: RedisClientType,
+	redis: AnyRedis,
 ) => {
 	type Changes = ['set' | 'del', string, any][];
 
@@ -82,7 +82,19 @@ export const createContextManager = <T extends object>(
 	};
 
 	const proxy = deepProxy(initial, (mut: ProxyMut, path: ProxyPath, value) => {
-		pendingChanges.push([mut, path.join('.'), value]);
+		const pathString = path.join('.');
+
+		if (mut === 'set' && typeof value === 'object') {
+			const flattened: Record<string, any> = {};
+			flattenObject(value, pathString, flattened);
+
+			for (const [flatPath, flatValue] of Object.entries(flattened)) {
+				pendingChanges.push([mut, flatPath, serializeValue(flatValue)]);
+			}
+		} else {
+			pendingChanges.push([mut, pathString, serializeValue(value)]);
+		}
+
 		scheduleUpdate();
 	});
 
@@ -90,6 +102,106 @@ export const createContextManager = <T extends object>(
 		context: proxy,
 		waitAllSync: () => Promise.allSettled(updatePromises),
 	};
+};
+
+/**
+ * Compress GraphQLWSContext into a flat object suitable for Redis storage.
+ * This is the inverse of buildContext - it takes a nested context object
+ * and flattens it using dot notation for storage in Redis hash.
+ *
+ * The subscriptions field is intentionally excluded from compression
+ * as it typically contains AsyncGenerators that shouldn't be persisted.
+ */
+export const compressContext = (
+	context: GraphQLWSContext,
+): Record<string, any> => {
+	const compressed: Record<string, any> = {};
+
+	// Handle top-level boolean flags directly
+	if (context.connectionInitReceived !== undefined) {
+		compressed.connectionInitReceived = serializeValue(
+			context.connectionInitReceived,
+		);
+	}
+	if (context.acknowledged !== undefined) {
+		compressed.acknowledged = serializeValue(context.acknowledged);
+	}
+
+	// Handle connectionParams - flatten with dot notation
+	if (context.connectionParams) {
+		const flattened: Record<string, any> = {};
+		flattenObject(context.connectionParams, 'connectionParams', flattened);
+		// Apply serialization after flattening
+		for (const [key, value] of Object.entries(flattened)) {
+			compressed[key] = serializeValue(value);
+		}
+	}
+
+	// Handle extra data - flatten with dot notation
+	if (context.extra) {
+		const flattened: Record<string, any> = {};
+		flattenObject(context.extra, 'extra', flattened);
+		// Apply serialization after flattening
+		for (const [key, value] of Object.entries(flattened)) {
+			compressed[key] = serializeValue(value);
+		}
+	}
+
+	// Note: subscriptions are intentionally excluded as they contain
+	// AsyncGenerators and other non-serializable data that shouldn't be persisted
+
+	return compressed;
+};
+
+/**
+ * Recursively flatten an object using dot notation.
+ * Handles both objects and arrays, preserving the structure for later reconstruction.
+ */
+const flattenObject = (
+	obj: any,
+	prefix: string,
+	target: Record<string, any>,
+): void => {
+	if (obj === null || obj === undefined) {
+		target[prefix] = obj;
+		return;
+	}
+
+	// Handle arrays
+	if (Array.isArray(obj)) {
+		for (let i = 0; i < obj.length; i++) {
+			const value = obj[i];
+			const key = `${prefix}.${i}`;
+
+			if (value === null || value === undefined) {
+				target[key] = value;
+			} else if (typeof value === 'object') {
+				flattenObject(value, key, target);
+			} else {
+				target[key] = value;
+			}
+		}
+		return;
+	}
+
+	// Handle objects
+	if (typeof obj === 'object') {
+		for (const [key, value] of Object.entries(obj)) {
+			const fullKey = `${prefix}.${key}`;
+
+			if (value === null || value === undefined) {
+				target[fullKey] = value;
+			} else if (typeof value === 'object') {
+				flattenObject(value, fullKey, target);
+			} else {
+				target[fullKey] = value;
+			}
+		}
+		return;
+	}
+
+	// Handle primitive values (shouldn't reach here in normal usage)
+	target[prefix] = obj;
 };
 
 /**
@@ -114,7 +226,7 @@ export const buildContext = (raw: object): GraphQLWSContext => {
 	for (const [key, value] of Object.entries(raw)) {
 		// Handle top-level boolean flags
 		if (key === 'connectionInitReceived' || key === 'acknowledged') {
-			context[key] = value === true || value === 'true' || value === '1';
+			context[key] = deserializeValue(value);
 			continue;
 		}
 
@@ -141,11 +253,76 @@ export const buildContext = (raw: object): GraphQLWSContext => {
 						: null;
 
 		if (target && value !== null) {
-			setNestedValue(target, path, value);
+			setNestedValue(target, path, deserializeValue(value));
 		}
 	}
 
 	return context as GraphQLWSContext;
+};
+
+/**
+ * Serialize a value with type prefix for Redis storage.
+ * This ensures we can accurately deserialize the value back to its original type.
+ */
+const serializeValue = (value: any): string => {
+	if (value === null) return '__null__';
+	if (value === undefined) return '__undefined__';
+
+	if (typeof value === 'boolean') {
+		return `__boolean__${value}`;
+	}
+
+	if (typeof value === 'number') {
+		return `__number__${value}`;
+	}
+
+	if (typeof value === 'string') {
+		// Strings are the default, no prefix needed
+		return value;
+	}
+
+	// For other types (objects, arrays, functions), stringify them
+	// This shouldn't normally happen in our flattened context, but handle it gracefully
+	return String(value);
+};
+
+/**
+ * Deserialize a value from Redis storage back to its original type using type prefixes.
+ */
+const deserializeValue = (value: any): any => {
+	// If it's not a string, return as-is
+	if (typeof value !== 'string') {
+		return value;
+	}
+
+	// Handle type prefix format
+	if (value.startsWith('__')) {
+		const prefixEnd = value.indexOf('__', 2);
+		if (prefixEnd !== -1) {
+			const type = value.substring(2, prefixEnd);
+			const content = value.substring(prefixEnd + 2);
+
+			switch (type) {
+				case 'boolean':
+					return content === 'true';
+				case 'number':
+					const num = Number(content);
+					return isNaN(num) ? content : num;
+				case 'string':
+					return content;
+				case 'null':
+					return null;
+				case 'undefined':
+					return undefined;
+				default:
+					// Unknown prefix, return the content as string
+					return content;
+			}
+		}
+	}
+
+	// If no type prefix found, treat as plain string
+	return value;
 };
 
 /**
