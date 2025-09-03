@@ -1,6 +1,6 @@
 import { PubSub, PubSubEngine } from 'graphql-subscriptions';
 
-type Channel = AsyncIterator<any, any, any> | {};
+type Channel = AsyncIterable<any, any, any>;
 
 /**
  * An interface to GraphQL Pubsub Engine.

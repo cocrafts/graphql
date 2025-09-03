@@ -3,7 +3,7 @@ import type { ApiGatewayManagementApiClient } from '@aws-sdk/client-apigatewayma
 import type { RedisClientType } from 'redis';
 import type { GraphQLPubSub } from '@cocrafts/graphql-pubsub';
 
-type RegistrableChannel = {
+type RegistrableChannel = AsyncIterable<any> & {
 	topics: string[];
 	register: (connectionId: string, subscriptionId: string) => Promise<void>;
 };
@@ -100,6 +100,8 @@ export class GraphQLLambdaPubsub implements GraphQLPubSub {
 
 	subscribe(...topics: string[]): RegistrableChannel {
 		const channel = {
+			// Fake Async iterator to comply with SubscriptionResolver `subscribe` return type
+			[Symbol.asyncIterator]: () => (async function* () {})(),
 			topics,
 			register: async (connectionId: string, subscriptionId: string) => {
 				const connectionKey = this.key('conn', connectionId);
