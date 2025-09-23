@@ -9,11 +9,11 @@ export const isAWSBaseEvent = (
 };
 
 export const key = {
-	connCtx: (connectionId: string) => {
-		return `AWSWebsocketGraphQL:connection:${connectionId}`;
+	connectionContext: (connectionId: string) => {
+		return `graphql:connection:${connectionId}`;
 	},
-	subPayload: (subscriptionId: string) => {
-		return `AWSWebsocketGraphQL:subscription:${subscriptionId}`;
+	subscriptionPayload: (subscriptionId: string) => {
+		return `graphql:subscription:${subscriptionId}`;
 	},
 };
 

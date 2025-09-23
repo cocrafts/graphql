@@ -150,10 +150,11 @@ const handleDisconnect: AWSGraphQLRouteHandler = async (
 	await pubsub.disconnect(connectionId);
 
 	const ctx = await socket.context();
+	await redis.del(key.connectionContext(connectionId));
 
 	if (options.onComplete) {
 		const completePromises = subscriptions.map(async subscriptionId => {
-			const rawPayload = await redis.get(key.subPayload(subscriptionId));
+			const rawPayload = await redis.getDel(key.subscriptionPayload(subscriptionId));
 			if (!rawPayload) {
 				throw Error('Subscription payload is missing to handle disconnect');
 			}
@@ -252,7 +253,7 @@ const handleMessage: AWSGraphQLRouteHandler = async (
 
 			// Store message payload to handle with `onComplete` from disconnect event
 			// or complete message from client in another runtimes
-			await redis.set(key.subPayload(id), JSON.stringify(payload));
+			await redis.set(key.subscriptionPayload(id), JSON.stringify(payload));
 
 			const emit = createSubscriptionEmitter(options, socket);
 
@@ -357,7 +358,7 @@ const handleMessage: AWSGraphQLRouteHandler = async (
 
 			const [ctx, rawPayload] = await Promise.all([
 				socket.context(),
-				redis.get(key.subPayload(subscriptionId)),
+				redis.getDel(key.subscriptionPayload(subscriptionId)),
 			]);
 
 			if (!rawPayload) {

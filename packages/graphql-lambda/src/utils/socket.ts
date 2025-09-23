@@ -15,7 +15,7 @@ export const createSocket = (
 	redis: AnyRedis,
 	connectionId: string,
 ): Socket => {
-	const contextKey = key.connCtx(connectionId);
+	const contextKey = key.connectionContext(connectionId);
 	let contextManager: ReturnType<typeof createContextManager<GraphQLWSContext>>;
 	let contextPromise: Promise<GraphQLWSContext>;
 
