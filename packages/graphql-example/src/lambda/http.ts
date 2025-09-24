@@ -3,10 +3,12 @@ import {
 	GraphQLLambdaPubsub,
 } from '@cocrafts/graphql-lambda';
 
-import { graphqlHttpOptions } from '../graphql';
+import { graphqlHttpOptions, schema } from '../graphql';
 import { setPubsub } from '../pubsub';
 import { gateway, redis } from './shared';
 
-setPubsub(new GraphQLLambdaPubsub(gateway, redis));
+const pubsub = setPubsub(new GraphQLLambdaPubsub(gateway, redis));
+
+pubsub.setGraphQLSchema(schema);
 
 export const handler = GraphQLLambdaHttpAdapter(graphqlHttpOptions);

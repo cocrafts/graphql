@@ -21,7 +21,7 @@ const typeDefs = /* GraphQL */ `
 	}
 
 	type Mutation {
-		sendMessage(chat: String, message: String!): String
+		sendMessage(chat: String, message: String!): Message
 		updateUserStatus(userId: ID!, status: String!): UserStatus
 		sendNotification(userId: ID!, message: String!): Notification
 	}
@@ -31,7 +31,7 @@ const typeDefs = /* GraphQL */ `
 		counter(maxCount: Int = 10): Int!
 
 		# PubSub-based subscriptions (serverless compatible)
-		messaged(chat: String): String!
+		messaged(chat: String): Message!
 		userStatusChanged(userId: ID): UserStatus!
 		notificationReceived(userId: ID!): Notification!
 	}
@@ -49,6 +49,12 @@ const typeDefs = /* GraphQL */ `
 		message: String!
 		createdAt: String!
 	}
+
+	type Message {
+		id: ID!
+		content: String!
+		createdAt: String!
+	}
 `;
 
 export const schema = makeExecutableSchema({
@@ -64,8 +70,16 @@ export const schema = makeExecutableSchema({
 			sendMessage: async (obj, args, ctx, info) => {
 				logOperation(obj, args, ctx, info);
 				const chat = args.chat ?? 'broadcast';
-				await pubsub.publish(`messaged_${chat}`, { messaged: args.message });
-				return `sent_${args.message}_${chat}`;
+
+				const message = {
+					id: `msg_${Date.now()}_${randomIndex()}`,
+					content: args.message,
+					createdAt: new Date().toISOString(),
+				};
+
+				await pubsub.publish(`messaged_${chat}`, { messaged: message });
+
+				return message;
 			},
 			updateUserStatus: async (obj, args, ctx, info) => {
 				logOperation(obj, args, ctx, info);

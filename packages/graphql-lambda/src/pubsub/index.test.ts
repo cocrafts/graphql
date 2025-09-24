@@ -228,9 +228,7 @@ test('publish event of a topic to connection', async () => {
 	expect(capturedCommand.input.ConnectionId).toBe(connectionId);
 	expect(capturedCommand.input.Data).toContain('Hello World');
 	expect(capturedCommand.input.Data).toEqual(
-		pubsubWithMock.prepareAndStringifyPayload('sub-1', {
-			message: 'Hello World',
-		}),
+		pubsubWithMock.encodePayload('sub-1', { data: { message: 'Hello World' } }),
 	);
 });
 

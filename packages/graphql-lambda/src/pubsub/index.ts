@@ -2,6 +2,9 @@ import { PostToConnectionCommand } from '@aws-sdk/client-apigatewaymanagementapi
 import type { ApiGatewayManagementApiClient } from '@aws-sdk/client-apigatewaymanagementapi';
 import type { RedisClientType } from 'redis';
 import type { GraphQLPubSub } from '@cocrafts/graphql-pubsub';
+import { execute, parse, type GraphQLSchema } from 'graphql';
+import type { ExecutionResult, SubscribePayload } from 'graphql-ws';
+import { key } from '../utils';
 
 type RegistrableChannel = AsyncIterable<any> & {
 	topics: string[];
@@ -28,7 +31,9 @@ type Options = {
 export class GraphQLLambdaPubsub implements GraphQLPubSub {
 	private redis: AnyRedis;
 	private gateway: ApiGatewayManagementApiClient;
+	private schema: GraphQLSchema | null = null;
 	private options: Options;
+	private subscribePayloadMap: Record<string, SubscribePayload | null> = {};
 
 	constructor(
 		gateway: ApiGatewayManagementApiClient,
@@ -38,6 +43,10 @@ export class GraphQLLambdaPubsub implements GraphQLPubSub {
 		this.gateway = gateway;
 		this.redis = redis;
 		this.options = options;
+	}
+
+	setGraphQLSchema(schema: GraphQLSchema) {
+		this.schema = schema;
 	}
 
 	key(type: 'conn' | 'sub' | 'topic', id: string) {
@@ -87,13 +96,64 @@ export class GraphQLLambdaPubsub implements GraphQLPubSub {
 		return subscriptionKeys.map(this.extractId).filter(Boolean) as string[];
 	}
 
-	preparePayload(subscriptionId: string, payload: any) {
-		return { id: subscriptionId, type: 'next', payload: { data: payload } };
+	private async getSubscribePayload(subscriptionId: string) {
+		if (this.subscribePayloadMap[subscriptionId]) {
+			return this.subscribePayloadMap[subscriptionId];
+		}
+
+		const payload = await this.redis.get(
+			key.subscriptionPayload(subscriptionId),
+		);
+
+		this.subscribePayloadMap[subscriptionId] = payload
+			? (JSON.parse(payload) as SubscribePayload)
+			: null;
+
+		return this.subscribePayloadMap[subscriptionId];
 	}
 
-	prepareAndStringifyPayload(subscriptionId: string, payload: any) {
+	/**
+	 * Validate the payload by schema and reformat following query payload (with aliases)
+	 */
+	async executePayload(
+		subscriptionId: string,
+		payload: any,
+	): Promise<ExecutionResult> {
+		if (!this.schema) {
+			console.warn(
+				'GraphQL schema is not set to validate and reformat payload. \
+				Skipping validation and reformatting.',
+			);
+
+			return { data: payload };
+		}
+
+		const subscribePayload = await this.getSubscribePayload(subscriptionId);
+		if (!subscribePayload) {
+			console.warn('SubscribePayload must be available to publish payload');
+			return { data: payload };
+		}
+
+		// For each payload yielded from a subscription, map it over the normal
+		// GraphQL `execute` function, with `payload` as the rootValue.
+		// This implements the "MapSourceToResponseEvent" algorithm described in
+		// the GraphQL specification. The `execute` function provides the
+		// "ExecuteSubscriptionEvent" algorithm, as it is nearly identical to the
+		// "ExecuteQuery" algorithm, for which `execute` is also used.
+		return await execute({
+			schema: this.schema,
+			document: parse(subscribePayload.query),
+			variableValues: subscribePayload.variables,
+			// Context is missing when publish payload.
+			// Need to way to sync context of subscription to publish payload.
+			contextValue: {},
+			rootValue: payload,
+		});
+	}
+
+	encodePayload(subscriptionId: string, payload: ExecutionResult): string {
 		return JSON.stringify(
-			this.preparePayload(subscriptionId, payload),
+			{ id: subscriptionId, type: 'next', payload },
 			this.options.jsonMessageReplacer,
 		);
 	}
@@ -127,11 +187,14 @@ export class GraphQLLambdaPubsub implements GraphQLPubSub {
 
 		// NOTE: consider batching for high fan-out PostToConnection
 		const results = await Promise.allSettled(
-			channels.map(({ connectionId, subscriptionId }) => {
+			channels.map(async ({ connectionId, subscriptionId }) => {
+				const result = await this.executePayload(subscriptionId, payload);
+				const data = this.encodePayload(subscriptionId, result);
+
 				return this.gateway.send(
 					new PostToConnectionCommand({
 						ConnectionId: connectionId,
-						Data: this.prepareAndStringifyPayload(subscriptionId, payload),
+						Data: data,
 					}),
 				);
 			}),
