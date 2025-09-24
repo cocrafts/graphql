@@ -7,13 +7,13 @@
         "@aws-sdk/client-apigatewaymanagementapi": "^3.864.0",
         "@types/aws-lambda": "^8.10.152",
         "@types/bun": "^1.2.20",
-        "graphql": "^16.10.0",
+        "graphql": "^16.11.0",
         "graphql-ws": "^6.0.6",
         "prettier": "^3.6.2",
         "redis": "^5.8.0",
       },
       "peerDependencies": {
-        "graphql": "^16",
+        "graphql": "^16.11.0",
         "typescript": "^5",
       },
     },
@@ -41,7 +41,7 @@
     },
     "packages/graphql-lambda": {
       "name": "@cocrafts/graphql-lambda",
-      "version": "0.2.0",
+      "version": "0.2.4",
       "devDependencies": {
         "@aws-sdk/client-apigatewaymanagementapi": "^3.864.0",
         "@rollup/plugin-commonjs": "^27.0.0",
@@ -67,7 +67,7 @@
     },
     "packages/graphql-pubsub": {
       "name": "@cocrafts/graphql-pubsub",
-      "version": "0.1.0",
+      "version": "0.1.2",
       "dependencies": {
         "graphql-subscriptions": "^3.0.0",
       },
@@ -450,7 +450,7 @@
 
     "gopd": ["gopd@1.2.0", "", {}, "sha512-ZUKRh6/kUFoAiTAtTYPZJ3hw9wNxx+BIBOijnlG9PnrJsCcSjs1wyyD6vJpaYtgnzDrKYRSqf3OO6Rfa93xsRg=="],
 
-    "graphql": ["graphql@16.10.0", "", {}, "sha512-AjqGKbDGUFRKIRCP9tCKiIGHyriz2oHEbPIbEtcSLSs4YjReZOIPQQWek4+6hjw62H9QShXHyaGivGiYVLeYFQ=="],
+    "graphql": ["graphql@16.11.0", "", {}, "sha512-mS1lbMsxgQj6hge1XZ6p7GPhbrtFwUFYi3wRzXAC/FmYnyXMTvvI3td3rjmQ2u8ewXueaSvRPWaEcgVVOT9Jnw=="],
 
     "graphql-http": ["graphql-http@1.22.4", "", { "peerDependencies": { "graphql": ">=0.11 <=16" } }, "sha512-OC3ucK988teMf+Ak/O+ZJ0N2ukcgrEurypp8ePyJFWq83VzwRAmHxxr+XxrMpxO/FIwI4a7m/Fzv3tWGJv0wPA=="],
 

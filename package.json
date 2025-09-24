@@ -11,8 +11,8 @@
 	"devDependencies": {
 		"@aws-sdk/client-apigatewaymanagementapi": "^3.864.0",
 		"@types/aws-lambda": "^8.10.152",
-    	"@types/bun": "^1.2.20",
-		"graphql": "^16.10.0",
+		"@types/bun": "^1.2.20",
+		"graphql": "^16.11.0",
 		"graphql-ws": "^6.0.6",
 		"prettier": "^3.6.2",
 		"redis": "^5.8.0"
