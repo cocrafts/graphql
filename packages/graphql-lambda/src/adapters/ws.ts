@@ -154,7 +154,9 @@ const handleDisconnect: AWSGraphQLRouteHandler = async (
 
 	if (options.onComplete) {
 		const completePromises = subscriptions.map(async subscriptionId => {
-			const rawPayload = await redis.getDel(key.subscriptionPayload(subscriptionId));
+			const rawPayload = await redis.getDel(
+				key.subscriptionPayload(subscriptionId),
+			);
 			if (!rawPayload) {
 				throw Error('Subscription payload is missing to handle disconnect');
 			}

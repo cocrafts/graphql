@@ -13,24 +13,29 @@ This project provides a unified GraphQL backend architecture that can run on ded
 AWS Lambda adapters for GraphQL with HTTP and WebSocket support.
 
 **Features:**
+
 - HTTP and WebSocket adapters for AWS Lambda
 - Redis integration for distributed storage and pub/sub
 - Cross-environment compatibility (local + Lambda)
 - Unified GraphQL interface
 
 **Usage:**
+
 ```typescript
-import { AWSGraphQLHttpAdapter, AWSGraphQLWsAdapter } from '@cocrafts/graphql-lambda';
+import {
+	AWSGraphQLHttpAdapter,
+	AWSGraphQLWsAdapter,
+} from '@cocrafts/graphql-lambda';
 
 // HTTP Lambda
 export const httpHandler = AWSGraphQLHttpAdapter(graphqlHttpOptions);
 
 // WebSocket Lambda
-export const wsHandler = AWSGraphQLWsAdapter({ 
-  ...graphqlWsOptions, 
-  storage, 
-  gateway, 
-  pubsub 
+export const wsHandler = AWSGraphQLWsAdapter({
+	...graphqlWsOptions,
+	storage,
+	gateway,
+	pubsub,
 });
 ```
 
@@ -39,11 +44,13 @@ export const wsHandler = AWSGraphQLWsAdapter({
 Abstract pub/sub interface for GraphQL subscriptions.
 
 **Features:**
+
 - Abstract `GraphQLPubSub` interface
 - Default implementation with `graphql-subscriptions`
 - Extensible for custom pub/sub backends
 
 **Usage:**
+
 ```typescript
 import { DefaultGraphQLPubSub } from '@cocrafts/graphql-pubsub';
 

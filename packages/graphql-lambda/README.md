@@ -37,7 +37,7 @@ ctx.extra.user.parent = ctx.extra.user;
 ```typescript
 // Server: Re-executes GraphQL for each event
 for await (const event of asyncIterator) {
-  yield await execute({ schema, document, rootValue: event });
+	yield await execute({ schema, document, rootValue: event });
 }
 
 // Serverless: Direct event forwarding
@@ -54,24 +54,30 @@ await pubsub.publish('topic', payload); // No re-execution
 ### Best Practices
 
 #### Context Management
+
 ```typescript
-onConnect: async (ctx) => {
-  ctx.extra = {
-    userId: await authenticateUser(ctx.connectionParams?.token),
-    subscriptionCount: 0
-  };
-  return true;
-}
+onConnect: async ctx => {
+	ctx.extra = {
+		userId: await authenticateUser(ctx.connectionParams?.token),
+		subscriptionCount: 0,
+	};
+	return true;
+};
 ```
 
 #### Subscription Design
+
 ```typescript
 // Design for direct payload forwarding
-subscribe: () => pubsub.subscribe('CHAT_MESSAGE')
+subscribe: () => pubsub.subscribe('CHAT_MESSAGE');
 
 // Publish complete, typed payloads
 await pubsub.publish('CHAT_MESSAGE', {
-  messageAdded: { id: '123', text: 'Hello', timestamp: new Date().toISOString() }
+	messageAdded: {
+		id: '123',
+		text: 'Hello',
+		timestamp: new Date().toISOString(),
+	},
 });
 ```
 
@@ -99,11 +105,11 @@ useServer(graphqlWsOptions, wss);
 ```typescript
 import { AWSGraphQLWsAdapter } from '@cocrafts/graphql-lambda';
 
-const mergedOptions = { 
-  ...graphqlWsOptions, 
-  storage, 
-  gateway, 
-  pubsub 
+const mergedOptions = {
+	...graphqlWsOptions,
+	storage,
+	gateway,
+	pubsub,
 };
 
 export const handler = AWSGraphQLWsAdapter(mergedOptions);
@@ -116,11 +122,13 @@ import { ApiGatewayManagementApiClient } from '@aws-sdk/client-apigatewaymanagem
 import { createClient } from 'redis';
 
 export const redis = createClient({ url: 'redis://localhost:6379' });
-export const gateway = new ApiGatewayManagementApiClient({ region: 'us-east-1' });
+export const gateway = new ApiGatewayManagementApiClient({
+	region: 'us-east-1',
+});
 
 export const storage = {
-  set: async (key: string, value: string) => await redis.set(key, value),
-  get: async (key: string) => await redis.get(key),
+	set: async (key: string, value: string) => await redis.set(key, value),
+	get: async (key: string) => await redis.get(key),
 };
 ```
 
