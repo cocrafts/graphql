@@ -340,8 +340,13 @@ const handleMessage: AWSGraphQLRouteHandler = async (
 				} else {
 					// Single emitted result that can be errors in execution
 					await emit.next(operationResult as any, message, execArgs);
-					await emit.complete(id in ctx.subscriptions, message);
 				}
+
+				// There're two scenarios where the subscription completes:
+				// - Client completes, disconnects -> The complete/disconnect process
+				// will be handled in another lambda runtime invoked by API Gateway
+				// - Server ends the channel, It may be `done` of `AsyncIterator` on server runtime.
+				// On lambda runtime, there's no way to detect that the channel ended except client completes the subscription.
 			} catch (error) {
 				await socket.close(CloseCode.BadRequest);
 				throw error;
