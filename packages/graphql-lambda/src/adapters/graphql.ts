@@ -1,18 +1,19 @@
 import {
 	getArgumentValues,
-	GraphQLError,
 	locatedError,
+	GraphQLError,
 	type DocumentNode,
 	type ExecutionArgs,
 } from 'graphql';
 import {
+	addPath,
 	buildExecutionContext,
 	buildResolveInfo,
+	collectFields,
 	getFieldDef,
+	pathToArray,
 	type ExecutionContext,
-} from 'graphql/execution/execute';
-import { collectFields } from 'graphql/execution/collectFields';
-import { addPath, pathToArray } from 'graphql/jsutils/Path';
+} from './graphql_internal';
 
 /**
  * A custom version of the `subscribe` function from the `graphql` package.
